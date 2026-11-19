@@ -150,7 +150,14 @@ header .brand{cursor:pointer}
 .leaflet-popup-content b{font-size:14px}.leaflet-popup-content a{color:#d2783a;font-weight:700}
 .pin{width:16px;height:16px;border-radius:50%;background:#B15F28;border:3px solid #fffafa;box-shadow:0 0 0 2px #B15F28}
 .pin.off{background:#6b7280;box-shadow:0 0 0 2px #6b7280}
-.cepbox{display:flex;gap:8px}.cepbox input{flex:1}
+.cepbox{display:flex;gap:8px;flex-wrap:wrap}.cepbox input{flex:1;min-width:120px}
+.ptag{position:absolute;left:50%;bottom:0;transform:translateX(-50%);background:#B15F28;color:#fff;font:800 12.5px 'DM Sans',sans-serif;padding:4px 9px;border-radius:8px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.45);border:2px solid #fffafa}
+.ptag::after{content:'';position:absolute;left:50%;bottom:-8px;transform:translateX(-50%);border:6px solid transparent;border-top-color:#fffafa}
+.ptag.off{background:#6b7280}
+.mapaG.low .ptag{font-size:0;padding:0;width:14px;height:14px;border-radius:50%;bottom:-7px}.mapaG.low .ptag::after{display:none}.mapaG.low .ptag:hover{font-size:12.5px;width:auto;height:auto;padding:4px 9px;border-radius:8px}.ptag:hover{z-index:9999;filter:brightness(1.15)}
+.cepres{display:flex;flex-direction:column;gap:6px;max-height:260px;overflow:auto;margin-top:8px}
+.cepres button{text-align:left;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:9px 12px}.cepres button:hover{border-color:var(--brand)}
+.cepres b{color:var(--brand2)}
 .geomsg{font-size:12.5px;color:var(--muted);margin-top:4px}
 .toggle{display:flex;background:var(--panel2);border-radius:10px;padding:3px}.toggle button{background:none;border:0;padding:7px 12px;border-radius:8px;font-weight:700;color:var(--muted)}.toggle button.on{background:var(--brand);color:#fff}
 .perto{display:flex;gap:6px;align-items:center}.perto input{width:190px}
@@ -355,7 +362,7 @@ td.num,th.num{text-align:right;white-space:nowrap}
     <div class="f s2"><label>Tipo</label><select id="miTipo"></select></div>
     <div class="f s2"><label>Finalidade</label><select id="miFin"><option>Venda</option><option>Aluguel</option></select></div>
     <div class="f"><label>Valor (R$)</label><input id="miValor" inputmode="decimal" placeholder="650000"></div>
-    <div class="f"><label>CEP</label><div class="cepbox"><input id="miCep" inputmode="numeric" placeholder="75000-000"><button class="btn ghost sm" id="miCepOk" type="button">🔍 Localizar</button></div><div class="geomsg" id="miGeoMsg"></div></div>
+    <div class="f"><label>CEP</label><div class="cepbox"><input id="miCep" inputmode="numeric" placeholder="75000-000"><button class="btn ghost sm" id="miCepOk" type="button">🔍 Localizar</button><button class="btn ghost sm" id="miCepBusca" type="button">❓ Não sei o CEP</button></div><div class="geomsg" id="miGeoMsg"></div></div>
     <div class="f full"><label>Endereço</label><input id="miEnd" placeholder="Rua, número, complemento"></div>
     <div class="f s2"><label>Condomínio</label><input id="miCond" list="dlCond" placeholder="Se tiver"></div>
     <div class="f s2"><label>Bairro</label><input id="miBairro" list="dlBairro"></div>
@@ -661,7 +668,8 @@ async function geocodeEndereco({cep,rua,bairro,cidade,uf}){
   return await geocode([rua,bairro,cidade,uf].filter(Boolean).join(', '))||await geocode([bairro,cidade,uf].filter(Boolean).join(', '))||(cep?await geocode(cep+', Brasil'):null)}
 const L_OK=()=>typeof window.L!=='undefined';
 function tiles(m){L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(m)}
-const pinIcon=(off)=>L.divIcon({className:'',html:`<div class="pin ${off?'off':''}"></div>`,iconSize:[22,22],iconAnchor:[11,11]});
+const pinIcon=(off,valor)=>valor?L.divIcon({className:'',html:`<div class="ptag ${off?'off':''}">${valor?brlK(valor).replace(',00',''):''}</div>`,iconSize:[0,0],iconAnchor:[0,8]})
+  :L.divIcon({className:'',html:`<div class="pin ${off?'off':''}"></div>`,iconSize:[22,22],iconAnchor:[11,11]});
 let mMapa=null,mPin=null,miLat=null,miLng=null;
 function mapaModal(lat,lng){if(!L_OK())return;const c=lat!=null?[lat,lng]:CENTRO;
   if(!mMapa){mMapa=L.map('miMapa',{zoomControl:true}).setView(c,lat!=null?16:13);tiles(mMapa);
@@ -670,7 +678,7 @@ function mapaModal(lat,lng){if(!L_OK())return;const c=lat!=null?[lat,lng]:CENTRO
   if(mPin){mMapa.removeLayer(mPin);mPin=null}if(lat!=null)setPin(lat,lng,false);
   setTimeout(()=>mMapa.invalidateSize(),150)}
 function setPin(lat,lng,auto){miLat=lat;miLng=lng;
-  if(!mPin){mPin=L.marker([lat,lng],{draggable:true,icon:pinIcon()}).addTo(mMapa);mPin.on('dragend',()=>{const p=mPin.getLatLng();miLat=p.lat;miLng=p.lng;sugerirRegiao()})}
+  if(!mPin){mPin=L.marker([lat,lng],{draggable:true,icon:pinIcon(false,num($('miValor').value))}).addTo(mMapa);mPin.on('dragend',()=>{const p=mPin.getLatLng();miLat=p.lat;miLng=p.lng;sugerirRegiao()})}
   else mPin.setLatLng([lat,lng]);if(auto)sugerirRegiao()}
 function sugerirRegiao(){const r=regiaoDe(miLat,miLng);if(r)$('miReg').value=r;$('miGeoMsg').textContent=miLat!=null?`📍 ${miLat.toFixed(5)}, ${miLng.toFixed(5)} · região ${r}`:''}
 async function localizarCep(){const msg=t=>$('miGeoMsg').textContent=t;msg('Buscando CEP…');
@@ -682,7 +690,30 @@ async function localizarCep(){const msg=t=>$('miGeoMsg').textContent=t;msg('Busc
     if(g){mMapa.setView(g,17);setPin(g[0],g[1],true);msg($('miGeoMsg').textContent+' · confira e arraste o pin se precisar')}
     else msg('Endereço achado, mas não a posição exata. Clique no mapa para marcar.')}
   catch(e){msg('⚠️ '+e.message)}}
-$('miCepOk').onclick=localizarCep;$('miCep').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();localizarCep()}});
+$('miCepOk').onclick=localizarCep;
+$('miValor').addEventListener('change',()=>{if(mPin)mPin.setIcon(pinIcon(false,num($('miValor').value)))});
+$('miCepBusca').onclick=()=>{const vol=ovAtual;
+  const box=document.createElement('div');box.className='ov on';box.style.zIndex=15;
+  box.innerHTML=`<div class="modal" style="width:min(520px,100%)"><div class="mhead"><h2>🔎 Descobrir o CEP</h2><button class="x" data-x>×</button></div>
+   <div style="padding:6px 22px 18px">
+    <div class="f"><label>Rua / avenida</label><input id="cbRua" placeholder="Ex.: Avenida Brasil"></div>
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:0 10px"><div class="f"><label>Cidade</label><input id="cbCid" value="Anápolis"></div><div class="f"><label>UF</label><input id="cbUf" value="GO" maxlength="2"></div></div>
+    <button class="btn" id="cbOk" style="width:100%">Buscar CEP</button>
+    <div class="cepres" id="cbRes"></div>
+    <p style="font-size:12.5px;color:var(--muted);margin:12px 0 0">Não achou? <a href="https://buscacepinter.correios.com.br/app/endereco/index.php" target="_blank" rel="noopener" style="color:var(--brand2);font-weight:700">Buscar no site dos Correios ↗</a></p>
+   </div></div>`;
+  document.body.appendChild(box);const fechar=()=>box.remove();
+  box.addEventListener('click',e=>{if(e.target===box||e.target.closest('[data-x]'))fechar()});
+  const buscar=async()=>{const rua=box.querySelector('#cbRua').value.trim(),cid=box.querySelector('#cbCid').value.trim(),uf=box.querySelector('#cbUf').value.trim().toUpperCase(),res=box.querySelector('#cbRes');
+    if(rua.length<3)return res.innerHTML='<span style="color:var(--amber)">Digite pelo menos 3 letras da rua</span>';
+    res.innerHTML='<span style="color:var(--muted)">Buscando…</span>';
+    try{const r=await fetch(`https://viacep.com.br/ws/${encodeURIComponent(uf)}/${encodeURIComponent(cid)}/${encodeURIComponent(rua)}/json/`);const j=await r.json();
+      if(!Array.isArray(j)||!j.length)return res.innerHTML='<span style="color:var(--amber)">Nenhum CEP encontrado. Tente só o nome principal da rua, ou use o site dos Correios abaixo.</span>';
+      res.innerHTML=j.slice(0,30).map(x=>`<button data-cep="${esc(x.cep)}"><b>${esc(x.cep)}</b> · ${esc(x.logradouro)}${x.complemento?' ('+esc(x.complemento)+')':''}<br><small style="color:var(--muted)">${esc(x.bairro)} – ${esc(x.localidade)}/${esc(x.uf)}</small></button>`).join('')}
+    catch(e){res.innerHTML='<span style="color:var(--amber)">Não consegui consultar agora. Use o site dos Correios abaixo.</span>'}};
+  box.querySelector('#cbOk').onclick=buscar;box.querySelector('#cbRua').addEventListener('keydown',e=>{if(e.key==='Enter')buscar()});
+  box.querySelector('#cbRes').addEventListener('click',e=>{const b=e.target.closest('[data-cep]');if(!b)return;$('miCep').value=b.dataset.cep;$('miCep')._auto=1;fechar();localizarCep()});
+  setTimeout(()=>box.querySelector('#cbRua').focus(),50)};$('miCep').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();localizarCep()}});
 $('miCep').addEventListener('input',e=>{if(soDig(e.target.value).length===8&&!e.target._auto){e.target._auto=1;localizarCep()}});
 
 /* mapa geral */
@@ -698,10 +729,10 @@ $('iPerto').addEventListener('keydown',e=>{if(e.key==='Enter')$('iPertoOk').clic
 $('iPerto').addEventListener('input',e=>{if(!e.target.value.trim()&&perto){perto=null;rImoveis()}});
 $('iRaio').onchange=rImoveis;
 function rMapaGeral(I){if(!L_OK()){$('iMapa').innerHTML='<div class="empty">Mapa indisponível</div>';return}
-  if(!gMapa){gMapa=L.map('iMapa').setView(CENTRO,13);tiles(gMapa)}
+  if(!gMapa){gMapa=L.map('iMapa').setView(CENTRO,13);tiles(gMapa);const z=()=>$('iMapa').classList.toggle('low',gMapa.getZoom()<15);gMapa.on('zoomend',z);z()}
   if(gLayer)gMapa.removeLayer(gLayer);gLayer=L.layerGroup().addTo(gMapa);const pts=[];
-  I.filter(i=>i.lat!=null).forEach(i=>{pts.push([i.lat,i.lng]);
-    L.marker([i.lat,i.lng],{icon:pinIcon(i.status!=='Disponível')}).addTo(gLayer).bindPopup(`<b>${esc(i.titulo)}</b><br>${esc([i.condominio,i.bairro].filter(Boolean).join(' · '))}<br><span style="color:#d2783a;font-weight:800">${i.valor?brl(i.valor):''}</span><br><a href="#" data-imo-pop="${i.id}">Abrir imóvel →</a>`)});
+  I.filter(i=>i.lat!=null).forEach(i=>{if(distKm(CENTRO[0],CENTRO[1],i.lat,i.lng)<25)pts.push([i.lat,i.lng]);
+    L.marker([i.lat,i.lng],{icon:pinIcon(i.status!=='Disponível',i.valor||null),riseOnHover:true}).addTo(gLayer).bindPopup(`<b>${esc(i.titulo)}</b><br>${esc([i.condominio,i.bairro].filter(Boolean).join(' · '))}<br><span style="color:#d2783a;font-weight:800">${i.valor?brl(i.valor):''}</span><br><a href="#" data-imo-pop="${i.id}">Abrir imóvel →</a>`)});
   if(perto){L.circle([perto.lat,perto.lng],{radius:+$('iRaio').value*1000,color:'#d2783a',weight:2,fillOpacity:.08}).addTo(gLayer);pts.push([perto.lat,perto.lng])}
   setTimeout(()=>{gMapa.invalidateSize();if(pts.length)gMapa.fitBounds(pts,{padding:[30,30],maxZoom:16})},100)}
 document.addEventListener('click',e=>{const a=e.target.closest('[data-imo-pop]');if(a){e.preventDefault();abrirImo(a.dataset.imoPop)}});
