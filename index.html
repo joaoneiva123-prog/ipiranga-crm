@@ -663,9 +663,26 @@ function regiaoDe(la,lo){if(la==null||lo==null)return'';const dy=(la-CENTRO[0])*
   if(d<3.2&&a>=135&&a<=225)return'Centro-Oeste';if(a>=45&&a<135)return'Norte';if(a>=135&&a<225)return'Oeste';if(a>=225&&a<315)return'Sul';return'Leste'}
 function distKm(a,b,c,d){const R=6371,r=x=>x*Math.PI/180,x=Math.sin(r(c-a)/2)**2+Math.cos(r(a))*Math.cos(r(c))*Math.sin(r(d-b)/2)**2;return 2*R*Math.asin(Math.sqrt(x))}
 async function viaCep(cep){const d=soDig(cep);if(d.length!==8)throw new Error('CEP deve ter 8 números');const r=await fetch(`https://viacep.com.br/ws/${d}/json/`);const j=await r.json();if(j.erro)throw new Error('CEP não encontrado');return j}
-async function geocode(q){const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q='+encodeURIComponent(q),{headers:{'Accept-Language':'pt-BR'}});const j=await r.json();return j[0]?[+j[0].lat,+j[0].lon]:null}
-async function geocodeEndereco({cep,rua,bairro,cidade,uf}){
-  return await geocode([rua,bairro,cidade,uf].filter(Boolean).join(', '))||await geocode([bairro,cidade,uf].filter(Boolean).join(', '))||(cep?await geocode(cep+', Brasil'):null)}
+async function nomi(params){const u=new URLSearchParams({format:'json',limit:'5',countrycodes:'br',addressdetails:'0',...params});
+  try{const r=await fetch('https://nominatim.openstreetmap.org/search?'+u,{headers:{'Accept-Language':'pt-BR'}});return await r.json()}catch(e){return[]}}
+async function geocode(q,perto){const p={q};if(perto){const d=.35;p.viewbox=[perto[1]-d,perto[0]+d,perto[1]+d,perto[0]-d].join(',');p.bounded='1'}
+  const j=await nomi(p);const r=j.find(x=>!perto||distKm(perto[0],perto[1],+x.lat,+x.lon)<=35);return r?[+r.lat,+r.lon]:null}
+const _cid={};
+async function centroCidade(cidade,uf){const k=(cidade+'/'+uf).toLowerCase();if(_cid[k])return _cid[k];
+  if(/^an[aá]polis$/i.test(cidade||''))return _cid[k]=CENTRO;
+  const j=await nomi({q:`${cidade}, ${uf}, Brasil`,limit:'1'});return _cid[k]=j[0]?[+j[0].lat,+j[0].lon]:null}
+/* Procura do mais preciso para o menos preciso, sempre DENTRO da cidade do CEP (raio de 35 km do centro dela).
+   Nunca usa o CEP sozinho na busca — era isso que mandava condomínios para outras cidades. */
+async function geocodeEndereco({rua,num,bairro,cidade,uf,cond}){
+  cidade=cidade||'Anápolis';uf=uf||'GO';const c0=await centroCidade(cidade,uf)||CENTRO;
+  const tenta=async(nivel,fn)=>{const g=await fn();if(g){g.nivel=nivel;return g}return null};
+  const ruaN=rua&&num?`${rua}, ${num}`:rua;
+  return (ruaN&&await tenta('endereço',async()=>{const j=await nomi({street:ruaN,city:cidade,country:'Brasil',viewbox:[c0[1]-.35,c0[0]+.35,c0[1]+.35,c0[0]-.35].join(','),bounded:'1'});
+            const r=j.find(x=>distKm(c0[0],c0[1],+x.lat,+x.lon)<=35);return r?[+r.lat,+r.lon]:null}))
+    ||(rua&&await tenta('rua',()=>geocode(`${rua}, ${bairro||''}, ${cidade}, ${uf}`,c0)))
+    ||(cond&&await tenta('condomínio',()=>geocode(`${cond}, ${cidade}, ${uf}`,c0)))
+    ||(bairro&&await tenta('bairro',()=>geocode(`${bairro}, ${cidade}, ${uf}`,c0)))
+    ||Object.assign([...c0],{nivel:'cidade'})}
 const L_OK=()=>typeof window.L!=='undefined';
 function tiles(m){L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(m)}
 const pinIcon=(off,valor)=>valor?L.divIcon({className:'',html:`<div class="ptag ${off?'off':''}">${valor?brlK(valor).replace(',00',''):''}</div>`,iconSize:[0,0],iconAnchor:[0,8]})
@@ -686,9 +703,14 @@ async function localizarCep(){const msg=t=>$('miGeoMsg').textContent=t;msg('Busc
     if(!$('miEnd').value.trim()&&j.logradouro)$('miEnd').value=j.logradouro+', ';
     if(j.bairro)$('miBairro').value=j.bairro;msg('Localizando no mapa…');
     const num=($('miEnd').value.match(/,\s*(\d+)/)||[])[1];
-    const g=await geocodeEndereco({cep:j.cep,rua:j.logradouro+(num?' '+num:''),bairro:j.bairro,cidade:j.localidade,uf:j.uf});
-    if(g){mMapa.setView(g,17);setPin(g[0],g[1],true);msg($('miGeoMsg').textContent+' · confira e arraste o pin se precisar')}
-    else msg('Endereço achado, mas não a posição exata. Clique no mapa para marcar.')}
+    // CEP de condomínio costuma vir com o nome do residencial no logradouro/complemento
+    const cond=$('miCond').value.trim()||(/(resid|condom|cond\.|villa|vila|park|jardins|alphaville|reserva)/i.test(j.logradouro+' '+j.complemento)?(j.complemento||j.logradouro):'');
+    if(cond&&!$('miCond').value.trim())$('miCond').value=cond;
+    const g=await geocodeEndereco({rua:j.logradouro,num,bairro:j.bairro,cidade:j.localidade,uf:j.uf,cond});
+    mMapa.setView(g,g.nivel==='cidade'?13:g.nivel==='bairro'||g.nivel==='condomínio'?16:17);setPin(g[0],g[1],true);
+    const aviso={'endereço':'✅ Endereço localizado · confira o pin','rua':'📍 Rua localizada · arraste o pin até o imóvel','condomínio':'📍 Condomínio localizado · arraste o pin até a unidade',
+      'bairro':'⚠️ Só achei o bairro · arraste o pin até o imóvel','cidade':`⚠️ Não achei a rua no mapa · pin no centro de ${j.localidade}. Clique no mapa no local do imóvel`}[g.nivel];
+    msg(aviso)}
   catch(e){msg('⚠️ '+e.message)}}
 $('miCepOk').onclick=localizarCep;
 $('miValor').addEventListener('change',()=>{if(mPin)mPin.setIcon(pinIcon(false,num($('miValor').value)))});
@@ -721,8 +743,8 @@ let gMapa=null,gLayer=null,perto=null,modoMapa=false;
 $('tgLista').onclick=()=>{modoMapa=false;$('tgLista').classList.add('on');$('tgMapa').classList.remove('on');rImoveis()};
 $('tgMapa').onclick=()=>{modoMapa=true;$('tgMapa').classList.add('on');$('tgLista').classList.remove('on');rImoveis()};
 $('iPertoOk').onclick=async()=>{const q=$('iPerto').value.trim();if(!q){perto=null;return rImoveis()}
-  $('iPertoOk').textContent='…';try{let g=null;if(soDig(q).length===8&&/^[\d\s.-]+$/.test(q)){const j=await viaCep(q);g=await geocodeEndereco({rua:j.logradouro,bairro:j.bairro,cidade:j.localidade,uf:j.uf,cep:j.cep})}
-    else g=await geocode(q+(/an[aá]polis/i.test(q)?'':', Anápolis, GO'));
+  $('iPertoOk').textContent='…';try{let g=null;if(soDig(q).length===8&&/^[\d\s.-]+$/.test(q)){const j=await viaCep(q);g=await geocodeEndereco({rua:j.logradouro,bairro:j.bairro,cidade:j.localidade,uf:j.uf})}
+    else g=await geocode(q+(/an[aá]polis/i.test(q)?'':', Anápolis, GO'),CENTRO);
     if(!g)toast('Não achei esse local');else{perto={lat:g[0],lng:g[1]};toast('Mostrando imóveis perto do local')}}catch(e){toast(e.message)}
   $('iPertoOk').textContent='Buscar';rImoveis()};
 $('iPerto').addEventListener('keydown',e=>{if(e.key==='Enter')$('iPertoOk').click()});
