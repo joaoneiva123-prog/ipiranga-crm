@@ -826,58 +826,96 @@ $('miUp').addEventListener('change',async e=>{const fs=[...e.target.files];e.tar
 
 /* ---------- PDF do imóvel ---------- */
 $('miPdf').onclick=()=>{const i=miId?S.imoveis.find(x=>x.id===miId):null;if(!i)return toast('Salve o imóvel antes de exportar');gerarPdf({...i,fotos:miFotos})};
+/* PDF no modelo da Ipiranga: paisagem 16:9, Poppins, painéis escuros/claros e destaque laranja */
+const _fontes={};
+async function fonteB64(n){if(_fontes[n])return _fontes[n];const b=await (await fetch('fonts/Poppins-'+n+'.ttf')).arrayBuffer();
+  let s='';const u=new Uint8Array(b);for(let k=0;k<u.length;k+=0x8000)s+=String.fromCharCode.apply(null,u.subarray(k,k+0x8000));return _fontes[n]=btoa(s)}
+const CRECI_EMPRESA='CRECI J 47642';
+function precoCurto(v){v=+v||0;if(v>=1e6){const x=v/1e6;return'R$ '+x.toLocaleString('pt-BR',{maximumFractionDigits:2})+(x<2?' milhão':' milhões')}
+  if(v>=1e3)return'R$ '+(v/1e3).toLocaleString('pt-BR',{maximumFractionDigits:1})+' mil';return brl(v)}
+function frasesDe(t){return(t||'').replace(/\r/g,'').split(/\n+|(?<=[.!;])\s+|\s+[-•✅✔▪︎*]\s+/).map(s=>s.replace(/^[\s\-•✅✔▪︎*]+/,'').replace(/[.;!]+$/,'').trim()).filter(s=>s.length>2)}
 async function gerarPdf(i){
   if(!window.jspdf)return toast('Gerador de PDF não carregou. Recarregue a página.');
   sheet('📄 PDF · '+i.titulo,`<p id="pdfMsg" style="margin:0;color:var(--muted)">Preparando…</p><div id="pdfAcoes" style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"></div>`,null);
   const msg=t=>{const el=$('pdfMsg');if(el)el.innerHTML=t};
   try{
-  const{jsPDF}=window.jspdf,doc=new jsPDF({unit:'mm',format:'a4',compress:true}),W=210,H=297,TERRA=[177,95,40],PRETO=[38,38,38];
+  const{jsPDF}=window.jspdf,doc=new jsPDF({unit:'pt',format:[960,540],orientation:'landscape',compress:true}),W=960,H=540;
+  msg('Carregando fontes…');
+  for(const n of ['Regular','Medium','SemiBold','Bold']){doc.addFileToVFS('Poppins-'+n+'.ttf',await fonteB64(n));doc.addFont('Poppins-'+n+'.ttf','Poppins',n.toLowerCase())}
+  const F=(peso,tam,cor)=>{doc.setFont('Poppins',peso);doc.setFontSize(tam);doc.setTextColor(...cor)};
+  const ESC=[20,20,20],CLARO=[244,242,238],LAR=[240,122,26],BRANCO=[255,255,255],CINZA=[150,150,150],TXT=[60,60,60];
   const logo=await logoImg(),lr=logo.height/logo.width;
   const fotos=[];let falhas=0;
-  for(let k=0;k<(i.fotos||[]).length;k++){msg(`Preparando fotos ${k+1} de ${i.fotos.length}…`);const cv=await fotoComMarca(i.fotos[k],1400,true);if(cv)fotos.push(cv);else falhas++}
+  for(let k=0;k<(i.fotos||[]).length;k++){msg(`Preparando fotos ${k+1} de ${i.fotos.length}…`);const cv=await fotoComMarca(i.fotos[k],1600,true);if(cv)fotos.push(cv);else falhas++}
   msg('Montando o PDF…');
   const corte=(cv,ar)=>{const c=document.createElement('canvas'),cw=cv.width,ch=cv.height;let sw=cw,sh=cw/ar;if(sh>ch){sh=ch;sw=ch*ar}
     c.width=Math.round(sw);c.height=Math.round(sh);c.getContext('2d').drawImage(cv,(cw-sw)/2,(ch-sh)/2,sw,sh,0,0,sw,sh);return c.toDataURL('image/jpeg',.82)};
-  const spec=[i.quartos!=null&&i.quartos+' quartos',i.suites&&i.suites+' suítes',i.vagas!=null&&i.vagas+' vagas',i.area&&String(i.area).replace('.',',')+' m2'].filter(Boolean).join('   •   ');
-  const local=[i.condominio,i.bairro,'Anápolis-GO'].filter(Boolean).join(' · ');
-  // CAPA
-  doc.setFillColor(...PRETO);doc.rect(0,0,W,H,'F');
-  if(fotos[0])doc.addImage(corte(fotos[0],W/165),'JPEG',0,0,W,165);
-  doc.setFillColor(...TERRA);doc.rect(0,165,W,2.2,'F');
-  const lw=96;doc.addImage(logo,'PNG',(W-lw)/2,180,lw,lw*lr);
-  doc.setTextColor(255,250,250);doc.setFont('helvetica','bold');doc.setFontSize(19);
-  const tl=doc.splitTextToSize(i.titulo||'',170);doc.text(tl.slice(0,3),W/2,180+lw*lr+16,{align:'center'});let y=180+lw*lr+16+tl.slice(0,3).length*8;
-  if(i.valor){doc.setTextColor(...TERRA);doc.setFontSize(26);doc.text(brl(i.valor).replace(',00',''),W/2,y+6,{align:'center'});y+=14}
-  doc.setTextColor(200,195,190);doc.setFont('helvetica','normal');doc.setFontSize(11.5);doc.text(local,W/2,y+4,{align:'center'});if(spec)doc.text(spec,W/2,y+11,{align:'center'});
-  doc.setFontSize(9);doc.setTextColor(150,145,140);doc.text(`${i.codigo?'Cód. '+i.codigo+'  •  ':''}${i.finalidade||'Venda'}  •  Exclusivamente seu.`,W/2,H-10,{align:'center'});
-  // cabeçalho/rodapé das páginas internas
-  const contato=[S.me.nome,S.me.whatsapp].filter(Boolean).join('  •  ');
-  const pagina=()=>{doc.addPage();doc.setFillColor(...PRETO);doc.rect(0,0,W,20,'F');doc.addImage(logo,'PNG',12,5,50,50*lr);
-    doc.setFillColor(...TERRA);doc.rect(0,20,W,1,'F');doc.setFontSize(8.5);doc.setTextColor(120,115,110);doc.setFont('helvetica','normal');
-    doc.text(`Ipiranga Gestão Imobiliária  •  ${contato}`,W/2,H-8,{align:'center'});doc.setTextColor(38,38,38)};
-  // DESCRIÇÃO
-  pagina();let yy=34;doc.setFont('helvetica','bold');doc.setFontSize(16);doc.text(i.titulo||'',14,yy,{maxWidth:182});yy+=doc.splitTextToSize(i.titulo||'',182).length*7+2;
-  doc.setFontSize(18);doc.setTextColor(...TERRA);if(i.valor){doc.text(brl(i.valor).replace(',00',''),14,yy+4);yy+=12}
-  doc.setTextColor(38,38,38);doc.setFont('helvetica','normal');doc.setFontSize(11);
-  const linhas=[['Tipo',i.tipo],['Finalidade',i.finalidade],['Localização',local],['Quartos',i.quartos],['Suítes',i.suites],['Vagas',i.vagas],['Área',i.area?String(i.area).replace('.',',')+' m2':null],['Código',i.codigo]].filter(x=>x[1]!=null&&x[1]!=='');
-  doc.setFillColor(245,240,236);doc.roundedRect(14,yy,182,linhas.length*7+6,3,3,'F');linhas.forEach((l,k)=>{doc.setFont('helvetica','bold');doc.text(l[0],19,yy+8+k*7);doc.setFont('helvetica','normal');doc.text(String(l[1]),62,yy+8+k*7)});
-  yy+=linhas.length*7+16;
-  if(i.descricao){doc.setFont('helvetica','bold');doc.setFontSize(13);doc.text('Sobre o imóvel',14,yy);yy+=7;doc.setFont('helvetica','normal');doc.setFontSize(10.5);
-    for(const ln of doc.splitTextToSize(i.descricao.replace(/\r/g,''),182)){if(yy>H-18){pagina();yy=32}doc.text(ln,14,yy);yy+=5.2}}
-  // FOTOS: 2 por página
-  const BX=182,BY=118;
-  fotos.forEach((cv,k)=>{if(k%2===0)pagina();const top=k%2===0?28:28+BY+8,ar=cv.width/cv.height;let w=BX,hh=BX/ar;if(hh>BY){hh=BY;w=BY*ar}
-    doc.addImage(cv.toDataURL('image/jpeg',.8),'JPEG',14+(BX-w)/2,top+(BY-hh)/2,w,hh)});
-  // CONTRACAPA
-  doc.addPage();doc.setFillColor(...PRETO);doc.rect(0,0,W,H,'F');const lw2=110;doc.addImage(logo,'PNG',(W-lw2)/2,90,lw2,lw2*lr);
-  doc.setTextColor(255,250,250);doc.setFontSize(15);doc.setFont('helvetica','bold');doc.text('Gostou? Vamos agendar sua visita.',W/2,90+lw2*lr+22,{align:'center'});
-  doc.setFont('helvetica','normal');doc.setFontSize(12.5);doc.setTextColor(210,205,200);doc.text(S.me.nome||'',W/2,90+lw2*lr+34,{align:'center'});
-  if(S.me.whatsapp)doc.text('WhatsApp: '+S.me.whatsapp,W/2,90+lw2*lr+42,{align:'center'});
-  doc.setTextColor(...TERRA);doc.text('Exclusivamente seu.',W/2,H-24,{align:'center'});
+  const foto=(k,x,y,w,h)=>{const cv=fotos[k%Math.max(fotos.length,1)];if(!cv){doc.setFillColor(40,40,40);doc.rect(x,y,w,h,'F');return}doc.addImage(corte(cv,w/h),'JPEG',x,y,w,h)};
+  const rodape=(x,cor)=>{F('regular',6.5,cor);doc.text(`Ipiranga Gestão Imobiliária · ${CRECI_EMPRESA}`,W-24,H-16,{align:'right'})};
+  const rotulo=(t,x,y,cor=LAR)=>{F('semibold',7.5,cor);doc.text(t.toUpperCase(),x,y,{charSpace:.6});doc.setDrawColor(...LAR);doc.setLineWidth(1.2);doc.line(x,y+7,x+22,y+7)};
+  const marcaTexto=(x,y,w=120)=>doc.addImage(logo,'PNG',x,y,w,w*lr);
+  const bullets=(arr,x,y,larg,cor,max=8,tam=8.5)=>{F('regular',tam,cor);let yy=y;
+    for(const b of arr.slice(0,max)){const ls=doc.splitTextToSize(b,larg-14);doc.setFillColor(...LAR);doc.circle(x+2,yy-2.6,1.6,'F');doc.text(ls,x+12,yy);yy+=ls.length*(tam+3.5)+5}return yy};
+  const titulo=(t,x,y,larg,cor,tam=20)=>{F('bold',tam,cor);const ls=doc.splitTextToSize(t,larg);doc.text(ls,x,y);return y+ls.length*(tam*1.15)};
+  const ehVenda=(i.finalidade||'Venda')!=='Aluguel';
+  const local=[i.condominio,i.bairro].filter(Boolean).join(' · ');
+  const m2=v=>String(v).replace('.',',')+' m²';
+  const frases=frasesDe(i.descricao);let fi=0;const proxFrases=n=>{const r=frases.slice(fi,fi+n);fi+=r.length;return r};
+
+  /* 1 · CAPA */
+  doc.setFillColor(...ESC);doc.rect(0,0,W,H,'F');
+  foto(0,355,0,273,H);foto(1,632,0,W-632,H);doc.setFillColor(...ESC);doc.rect(628,0,4,H,'F');
+  marcaTexto(40,40,130);
+  F('semibold',7.5,LAR);doc.text(`${ehVenda?'À VENDA':'PARA ALUGAR'} · ANÁPOLIS-GO`,40,205,{charSpace:.6});
+  let y=titulo(i.titulo||i.tipo||'Imóvel',40,238,275,BRANCO,25);
+  if(local){F('regular',11,[225,225,225]);doc.text(doc.splitTextToSize(local,275),40,y+4);y+=24}
+  if(i.valor){const p=precoCurto(i.valor);F('bold',11.5,ESC);const tw=doc.getTextWidth(p)+36;doc.setFillColor(...LAR);doc.roundedRect(40,y+6,tw,28,14,14,'F');doc.text(p,40+tw/2,y+24,{align:'center'})}
+  rodape(W,[190,190,190]);
+
+  /* 2 · O IMÓVEL */
+  doc.addPage();doc.setFillColor(...CLARO);doc.rect(0,0,W,H,'F');foto(2,0,0,300,H);
+  rotulo('O imóvel',340,52);
+  y=titulo(i.area?`${m2(i.area)}${/lote|terreno/i.test(i.tipo||'')?' de terreno':' de área'}`:(i.tipo||'Imóvel'),340,92,580,ESC,21);
+  F('regular',9.5,TXT);doc.text([i.tipo,local,i.codigo?'Cód. '+i.codigo:''].filter(Boolean).join('  ·  '),340,y-2);
+  const st=[[i.quartos,i.quartos==1?'quarto':'quartos'],[i.suites,i.suites==1?'suíte':'suítes'],[i.vagas,i.vagas==1?'vaga':'vagas'],[i.area?String(i.area).replace('.',','):null,'m² de área']].filter(s=>s[0]!=null&&s[0]!=='');
+  st.forEach((s,k)=>{const x=340+k*143;doc.setFillColor(...ESC);doc.roundedRect(x,y+18,132,82,7,7,'F');F('bold',22,LAR);doc.text(String(s[0]),x+14,y+52);F('regular',8,BRANCO);doc.text(s[1],x+14,y+80)});
+  y+=st.length?130:20;
+  const dest=proxFrases(10);
+  if(dest.length){F('bold',10,ESC);doc.text('Destaques',340,y);const meio=Math.ceil(dest.length/2);
+    bullets(dest.slice(0,meio).map(d=>d.length>90?d.slice(0,88)+'…':d),340,y+20,280,TXT,5,8.5);bullets(dest.slice(meio).map(d=>d.length>90?d.slice(0,88)+'…':d),640,y+20,280,TXT,5,8.5)}
+  rodape(W,CINZA);
+
+  /* 3+ · GALERIA (2 fotos por página, alternando o lado do texto) */
+  const TIT=['Conheça cada ambiente','Detalhes que fazem diferença','Espaços pensados para você','Mais do imóvel','Acabamento e conforto','Cada canto conta'];
+  const ROT=['Galeria','Detalhes','Ambientes','Galeria','Acabamento','Galeria'];
+  let g=3,pg=0;
+  while(g<fotos.length){const dois=g+1<fotos.length,escuro=pg%2===0;doc.addPage();
+    const txt=proxFrases(4),painelX=escuro?578:0,fotoX=escuro?0:382;
+    doc.setFillColor(...(escuro?ESC:CLARO));doc.rect(painelX,0,382,H,'F');
+    if(dois){foto(g,fotoX,0,287,H);foto(g+1,fotoX+291,0,287,H);doc.setFillColor(...ESC);doc.rect(fotoX+287,0,4,H,'F')}else foto(g,fotoX,0,578,H);
+    const px=painelX+34,cor=escuro?BRANCO:ESC;rotulo(ROT[pg%ROT.length],px,72);
+    let yy=titulo(TIT[pg%TIT.length],px,110,300,cor,19);
+    if(txt.length)bullets(txt,px,yy+10,310,escuro?[220,220,220]:TXT,4,8.5);
+    else if(pg===0){bullets([i.quartos&&`${i.quartos} quarto${i.quartos==1?'':'s'}${i.suites?' ('+i.suites+' suíte'+(i.suites==1?'':'s')+')':''}`,i.vagas&&`${i.vagas} vaga${i.vagas==1?'':'s'} de garagem`,i.area&&`${m2(i.area)} de área`,local&&`${local}, Anápolis-GO`].filter(Boolean),px,yy+10,310,escuro?[220,220,220]:TXT)}
+    else{F('regular',9.5,escuro?[220,220,220]:TXT);doc.text(doc.splitTextToSize('Fotos reais do imóvel. Agende uma visita com a Ipiranga e conheça cada detalhe pessoalmente.',300),px,yy+12)}
+    if(escuro)marcaTexto(px,H-78,110);
+    rodape(W,escuro?[160,160,160]:CINZA);g+=dois?2:1;pg++}
+
+  /* ÚLTIMA · CONTATO */
+  doc.addPage();doc.setFillColor(...ESC);doc.rect(0,0,W,H,'F');foto(fotos.length>1?1:0,610,0,W-610,H);
+  F('semibold',7.5,LAR);doc.text([i.titulo,i.bairro].filter(Boolean).join(' · ').toUpperCase().slice(0,80),40,92,{charSpace:.6});
+  if(i.valor){F('bold',40,BRANCO);doc.text(precoCurto(i.valor),40,150)}
+  F('regular',11.5,[225,225,225]);let yc=i.valor?182:120;
+  [[i.area&&m2(i.area),i.tipo].filter(Boolean).join(' · '),[i.quartos&&`${i.quartos} quarto${i.quartos==1?'':'s'}`,i.suites&&`${i.suites} suíte${i.suites==1?'':'s'}`,i.vagas&&`${i.vagas} vaga${i.vagas==1?'':'s'}`].filter(Boolean).join(' · ')].filter(Boolean).forEach(l=>{doc.text(l,40,yc);yc+=18});
+  doc.setDrawColor(...LAR);doc.setLineWidth(1.4);doc.line(40,yc+18,88,yc+18);
+  F('semibold',11,BRANCO);doc.text('Agende sua visita com a Ipiranga.',40,yc+48);
+  F('regular',10,[200,200,200]);doc.text([S.me.nome,S.me.whatsapp].filter(Boolean).join('  ·  '),40,yc+68);
+  marcaTexto(40,H-112,130);F('regular',7.5,[170,170,170]);doc.text(`${CRECI_EMPRESA} · Anápolis-GO`,40,H-40);
+
   const nome=`Ipiranga - ${(i.codigo?i.codigo+' - ':'')+(i.titulo||'imovel')}`.replace(/[\\/:*?"<>|]+/g,'').slice(0,80)+'.pdf';
   const blob=doc.output('blob'),file=new File([blob],nome,{type:'application/pdf'}),url=URL.createObjectURL(blob);
-  msg(`✅ PDF pronto: capa, descrição e <b>${fotos.length} foto${fotos.length===1?'':'s'}</b> com a marca da Ipiranga (${(blob.size/1048576).toFixed(1).replace('.',',')} MB).`+
-    (falhas?`<br><span style="color:var(--amber)">⚠️ ${falhas} foto${falhas>1?'s':''} não ${falhas>1?'puderam':'pôde'} ser incluída${falhas>1?'s':''}: o site onde ${falhas>1?'estão':'está'} hospedada${falhas>1?'s':''} bloqueia a cópia. Veja a orientação que te passei para ativar o "proxy de fotos".</span>`:''));
+  msg(`✅ PDF pronto no modelo Ipiranga: <b>${doc.getNumberOfPages()} páginas</b>, ${fotos.length} foto${fotos.length===1?'':'s'} com a marca da Ipiranga (${(blob.size/1048576).toFixed(1).replace('.',',')} MB).`+
+    (falhas?`<br><span style="color:var(--amber)">⚠️ ${falhas} foto${falhas>1?'s':''} não ${falhas>1?'puderam':'pôde'} ser incluída${falhas>1?'s':''}: o site onde ${falhas>1?'estão':'está'} hospedada${falhas>1?'s':''} bloqueia a cópia. Me avise para ativar o "proxy de fotos".</span>`:''));
   const podeShare=navigator.canShare&&navigator.canShare({files:[file]});
   $('pdfAcoes').innerHTML=(podeShare?`<button class="btnwa" id="pdfShare" style="flex:1;border:0">📤 Enviar (WhatsApp…)</button>`:'')+`<a class="btn ghost" style="flex:1;text-align:center;text-decoration:none" href="${url}" download="${esc(nome)}">⬇️ Baixar PDF</a>`;
   if(podeShare)$('pdfShare').onclick=async()=>{try{await navigator.share({files:[file],title:i.titulo,text:`${i.titulo} – Ipiranga Gestão Imobiliária`})}catch(e){}};
