@@ -450,7 +450,7 @@ const isDir=()=>S.me?.papel==='diretor';
 const isGer=()=>S.me?.papel==='gerente';
 const gestor=()=>isDir()||isGer();
 /* quem o usuário enxerga/gerencia: diretor = todos; gerente = ele + corretores; corretor = só ele */
-const equipe=()=>isDir()?ativos():isGer()?ativos().filter(p=>p.papel==='corretor'||p.id===S.me.id):ativos().filter(p=>p.id===S.me.id);
+const equipe=()=>isDir()?ativos().filter(p=>p.papel!=='diretor'||p.id===S.me.id):isGer()?ativos().filter(p=>p.papel==='corretor'||p.id===S.me.id):ativos().filter(p=>p.id===S.me.id);
 const nomeDe=id=>S.perfis.find(p=>p.id===id)?.nome||'—';
 const ativos=()=>S.perfis.filter(p=>p.ativo);
 
@@ -886,8 +886,8 @@ function rEquipe(){if(!isDir())return;const P=[...S.perfis].sort((a,b)=>(a.ativo
   $('eList').innerHTML=rImport()+`<table><thead><tr><th>Nome</th><th class="hidem">E-mail</th><th>WhatsApp</th><th>Papel</th><th>Acesso</th><th class="num hidem">Leads ativos</th></tr></thead><tbody>${P.map(p=>{const eu=p.id===S.me.id;
    const nl=S.leads.filter(l=>l.corretor_id===p.id&&!FINAIS.includes(l.etapa)).length;
    return`<tr><td><b>${esc(p.nome)}</b>${eu?' <span class="pill br">você</span>':''}</td><td class="hidem">${esc(p.email||'')}</td><td><input class="sel" data-wa="${p.id}" value="${esc(p.whatsapp||'')}" placeholder="(62) 9…" style="padding:6px 8px;width:150px"></td>
-   <td>${eu?'Diretor':`<select class="sel" data-papel="${p.id}" style="padding:6px 8px">${opts([{v:'corretor',t:'Corretor'},{v:'gerente',t:'Gerente'},{v:'diretor',t:'Diretor'}],p.papel)}</select>`}</td>
-   <td>${eu?'<span class="pill green">Liberado</span>':p.ativo?`<button class="btn ghost sm" data-ativo="${p.id}" data-val="0">Bloquear</button>`:`<button class="btn sm" data-ativo="${p.id}" data-val="1">✓ Liberar acesso</button>`}</td>
+   <td>${eu||p.papel==='diretor'?'Diretor':`<select class="sel" data-papel="${p.id}" style="padding:6px 8px">${opts([{v:'corretor',t:'Corretor'},{v:'gerente',t:'Gerente'},{v:'diretor',t:'Diretor'}],p.papel)}</select>`}</td>
+   <td>${eu||(p.papel==='diretor'&&p.ativo)?'<span class="pill green">Liberado</span>':p.ativo?`<button class="btn ghost sm" data-ativo="${p.id}" data-val="0">Bloquear</button>`:`<button class="btn sm" data-ativo="${p.id}" data-val="1">✓ Liberar acesso</button>`}</td>
    <td class="num hidem">${nl}</td></tr>`}).join('')}</tbody></table>`}
 $('eList').onclick=async e=>{const b=e.target.closest('[data-ativo]');if(!b)return;const{error}=await sb.from('profiles').update({ativo:b.dataset.val==='1'}).eq('id',b.dataset.ativo);
   if(error)return falha(error);toast(b.dataset.val==='1'?'Acesso liberado ✓':'Acesso bloqueado');await carregar('profiles');rEquipe()};

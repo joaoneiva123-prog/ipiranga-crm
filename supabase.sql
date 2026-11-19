@@ -220,3 +220,40 @@ alter table public.imoveis add column if not exists condominio text;
 alter table public.imoveis add column if not exists regiao text;
 alter table public.imoveis add column if not exists lat double precision;
 alter table public.imoveis add column if not exists lng double precision;
+-- Privacidade entre diretores: cada diretor vê só os próprios leads e o próprio financeiro
+create or replace function public.pode_ver_lead(dono uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select (public.is_ativo() and dono = auth.uid())
+      or (public.is_diretor() and coalesce(public.papel_de(dono),'') <> 'diretor')
+      or (public.is_gerente() and public.papel_de(dono) = 'corretor')
+$$;
+grant execute on function public.pode_ver_lead(uuid) to authenticated;
+
+drop policy if exists l_sel on public.leads;
+create policy l_sel on public.leads for select to authenticated using (public.pode_ver_lead(corretor_id));
+drop policy if exists l_ins on public.leads;
+create policy l_ins on public.leads for insert to authenticated with check (public.pode_ver_lead(corretor_id));
+drop policy if exists l_upd on public.leads;
+create policy l_upd on public.leads for update to authenticated
+  using (public.pode_ver_lead(corretor_id)) with check (public.pode_ver_lead(corretor_id));
+drop policy if exists l_del on public.leads;
+create policy l_del on public.leads for delete to authenticated using (public.pode_ver_lead(corretor_id));
+
+-- financeiro: cada diretor só vê e mexe no que ele lançou; corretor vê as comissões dele
+drop policy if exists f_sel on public.financeiro;
+create policy f_sel on public.financeiro for select to authenticated using (
+  (public.is_diretor() and (criado_por = auth.uid() or corretor_id = auth.uid()))
+  or (public.is_ativo() and corretor_id = auth.uid() and not public.is_gerente()));
+drop policy if exists f_ins on public.financeiro;
+create policy f_ins on public.financeiro for insert to authenticated with check (public.is_diretor() and criado_por = auth.uid());
+drop policy if exists f_upd on public.financeiro;
+create policy f_upd on public.financeiro for update to authenticated
+  using (public.is_diretor() and criado_por = auth.uid()) with check (public.is_diretor() and criado_por = auth.uid());
+drop policy if exists f_del on public.financeiro;
+create policy f_del on public.financeiro for delete to authenticated using (public.is_diretor() and criado_por = auth.uid());
+
+-- um diretor não pode alterar nem bloquear outro diretor
+drop policy if exists p_upd on public.profiles;
+create policy p_upd on public.profiles for update to authenticated
+  using (public.is_diretor() and (id = auth.uid() or public.papel_de(id) <> 'diretor'))
+  with check (public.is_diretor());
