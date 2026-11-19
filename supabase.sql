@@ -257,3 +257,43 @@ drop policy if exists p_upd on public.profiles;
 create policy p_upd on public.profiles for update to authenticated
   using (public.is_diretor() and (id = auth.uid() or public.papel_de(id) <> 'diretor'))
   with check (public.is_diretor());
+-- Diretor geral (João): vê tudo. Outros diretores: veem tudo, menos leads e financeiro do diretor geral
+alter table public.profiles add column if not exists master boolean not null default false;
+update public.profiles set master = true
+ where id = (select id from public.profiles where papel = 'diretor' order by criado limit 1);
+
+create or replace function public.is_master(uid uuid default auth.uid()) returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce((select master and ativo from public.profiles where id = uid), false)
+$$;
+grant execute on function public.is_master(uuid) to authenticated;
+
+create or replace function public.pode_ver_lead(dono uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_master()
+      or (public.is_ativo() and dono = auth.uid())
+      or (public.is_diretor() and not public.is_master(dono))
+      or (public.is_gerente() and public.papel_de(dono) = 'corretor')
+$$;
+
+drop policy if exists f_sel on public.financeiro;
+create policy f_sel on public.financeiro for select to authenticated using (
+  public.is_master()
+  or (public.is_diretor() and not public.is_master(criado_por))
+  or (public.is_ativo() and corretor_id = auth.uid() and not public.is_gerente()));
+drop policy if exists f_ins on public.financeiro;
+create policy f_ins on public.financeiro for insert to authenticated with check (public.is_diretor() and criado_por = auth.uid());
+drop policy if exists f_upd on public.financeiro;
+create policy f_upd on public.financeiro for update to authenticated
+  using (public.is_master() or (public.is_diretor() and not public.is_master(criado_por)))
+  with check (public.is_master() or (public.is_diretor() and not public.is_master(criado_por)));
+drop policy if exists f_del on public.financeiro;
+create policy f_del on public.financeiro for delete to authenticated
+  using (public.is_master() or (public.is_diretor() and not public.is_master(criado_por)));
+
+drop policy if exists p_upd on public.profiles;
+create policy p_upd on public.profiles for update to authenticated
+  using (public.is_master() or (public.is_diretor() and (id = auth.uid() or public.papel_de(id) <> 'diretor')))
+  with check (public.is_master() or (public.is_diretor() and not master));
+
+select nome, email, papel, master from public.profiles where papel = 'diretor';
