@@ -167,3 +167,41 @@ alter table public.leads   add column if not exists origem_id text;
 alter table public.leads   add column if not exists responsavel_origem text;
 create unique index if not exists imoveis_origem_uk on public.imoveis(origem_id);
 create unique index if not exists leads_origem_uk   on public.leads(origem_id);
+-- Papel GERENTE: vê e gerencia os leads dos corretores (e os próprios); não vê financeiro nem leads de diretores
+alter table public.profiles drop constraint if exists profiles_papel_check;
+alter table public.profiles add constraint profiles_papel_check check (papel in ('diretor','gerente','corretor'));
+
+create or replace function public.is_gerente() returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce((select ativo and papel = 'gerente' from public.profiles where id = auth.uid()), false)
+$$;
+create or replace function public.papel_de(uid uuid) returns text
+language sql stable security definer set search_path = public as $$
+  select papel from public.profiles where id = uid
+$$;
+grant execute on function public.is_gerente(), public.papel_de(uuid) to authenticated;
+
+-- leads: diretor tudo · dono vê os seus · gerente vê os dos corretores
+drop policy if exists l_sel on public.leads;
+create policy l_sel on public.leads for select to authenticated using (
+  public.is_diretor() or (public.is_ativo() and corretor_id = auth.uid())
+  or (public.is_gerente() and public.papel_de(corretor_id) = 'corretor'));
+drop policy if exists l_ins on public.leads;
+create policy l_ins on public.leads for insert to authenticated with check (
+  public.is_diretor() or (public.is_ativo() and corretor_id = auth.uid())
+  or (public.is_gerente() and public.papel_de(corretor_id) = 'corretor'));
+drop policy if exists l_upd on public.leads;
+create policy l_upd on public.leads for update to authenticated
+  using (public.is_diretor() or (public.is_ativo() and corretor_id = auth.uid())
+         or (public.is_gerente() and public.papel_de(corretor_id) = 'corretor'))
+  with check (public.is_diretor() or (public.is_ativo() and corretor_id = auth.uid())
+         or (public.is_gerente() and public.papel_de(corretor_id) = 'corretor'));
+drop policy if exists l_del on public.leads;
+create policy l_del on public.leads for delete to authenticated using (
+  public.is_diretor() or (public.is_ativo() and corretor_id = auth.uid())
+  or (public.is_gerente() and public.papel_de(corretor_id) = 'corretor'));
+
+-- financeiro: gerente não vê nada
+drop policy if exists f_sel on public.financeiro;
+create policy f_sel on public.financeiro for select to authenticated using (
+  public.is_diretor() or (public.is_ativo() and corretor_id = auth.uid() and not public.is_gerente()));

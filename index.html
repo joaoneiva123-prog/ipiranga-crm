@@ -407,6 +407,10 @@ function falha(e){console.error(e);toast('Erro: '+(e?.message||'não consegui sa
 /* ================= ESTADO ================= */
 const S={me:null,perfis:[],leads:[],imoveis:[],fin:[],view:'dash',lFiltro:'todos',lBusca:'',lCor:'',fTab:'receber'};
 const isDir=()=>S.me?.papel==='diretor';
+const isGer=()=>S.me?.papel==='gerente';
+const gestor=()=>isDir()||isGer();
+/* quem o usuário enxerga/gerencia: diretor = todos; gerente = ele + corretores; corretor = só ele */
+const equipe=()=>isDir()?ativos():isGer()?ativos().filter(p=>p.papel==='corretor'||p.id===S.me.id):ativos().filter(p=>p.id===S.me.id);
 const nomeDe=id=>S.perfis.find(p=>p.id===id)?.nome||'—';
 const ativos=()=>S.perfis.filter(p=>p.ativo);
 
@@ -445,11 +449,11 @@ async function iniciar(){
   if(error){tela('scrLogin');$('lgMsg').textContent='Banco ainda não configurado: rode o arquivo supabase.sql no Supabase.';return}
   if(!me||!me.ativo){tela('scrPend');return}
   S.me=me; tela('app');
-  $('meNome').textContent=me.nome; $('mePapel').textContent=isDir()?'Diretor':'Corretor';
+  $('meNome').textContent=me.nome; $('mePapel').textContent=({diretor:'Diretor',gerente:'Gerente',corretor:'Corretor'})[me.papel]||'Corretor';
   $('navEq').classList.toggle('hide',!isDir());
-  $('navFin').textContent=isDir()?'💰 Financeiro':'💰 Minhas comissões';
+  $('navFin').textContent=isDir()?'💰 Financeiro':'💰 Minhas comissões';$('navFin').classList.toggle('hide',isGer());
   $('fNovo').classList.toggle('hide',!isDir());
-  $('mlCorBox').classList.toggle('hide',!isDir());
+  $('mlCorBox').classList.toggle('hide',!gestor());
   $('miDel').classList.toggle('hide',!isDir());
   await carregarTudo(); tempoReal(); setInterval(carregarTudo,120000);
 }
@@ -484,18 +488,18 @@ function render(){if(!S.me)return;
 /* ================= LEADS ================= */
 function stLead(c){if(FINAIS.includes(c.etapa)||!c.data)return null;const n=diff(c.data);return n<0?'late':n===0?'today':n<=3?'soon':'fut'}
 function rotLead(c){const n=diff(c.data);if(n===null)return'';const h=c.hora?' '+c.hora:'';if(n<0)return`Atrasado ${-n}d`;if(n===0)return'HOJE'+h;if(n===1)return'Amanhã'+h;return fmtD(c.data).slice(0,5)+h}
-function leadsVis(){let L=S.leads;if(isDir()&&S.lCor)L=L.filter(c=>c.corretor_id===S.lCor);
+function leadsVis(){let L=S.leads;if(gestor()&&S.lCor)L=L.filter(c=>c.corretor_id===S.lCor);
   const q=S.lBusca.trim().toLowerCase();if(q)L=L.filter(c=>[c.nome,c.tel,c.busca,c.origem,...(c.notas||[]).map(n=>n.t)].join(' ').toLowerCase().includes(q));return L}
 const ordL=(a,b)=>{const x=a.data||'9999',y=b.data||'9999';return x<y?-1:x>y?1:0};
 function rLeads(){
-  const sc=$('lCorretor');sc.classList.toggle('hide',!isDir());
-  if(isDir()){const v=S.lCor;sc.innerHTML=`<option value="">Todos os corretores</option>`+opts(ativos().map(p=>({v:p.id,t:p.nome})),v)}
+  const sc=$('lCorretor');sc.classList.toggle('hide',!gestor());
+  if(gestor()){const v=S.lCor;sc.innerHTML=`<option value="">Toda a equipe</option>`+opts(equipe().map(p=>({v:p.id,t:p.nome})),v)}
   const L=leadsVis(),A=L.filter(c=>!FINAIS.includes(c.etapa));
   $('sAtivos').textContent=A.length;$('sAtras').textContent=A.filter(c=>stLead(c)==='late').length;$('sHoje').textContent=A.filter(c=>stLead(c)==='today').length;
   $('sVis').textContent=L.filter(c=>c.etapa==='visita'&&c.data&&diff(c.data)>=0&&diff(c.data)<=7).length;
   $('lTabs').innerHTML=`<button class="tab ${S.lFiltro==='todos'?'on':''}" data-f="todos">Todas</button>`+ETAPAS.map(e=>`<button class="tab ${S.lFiltro===e.id?'on':''}" data-f="${e.id}">${e.ico} ${esc(e.nome)}<span class="n">${L.filter(c=>c.etapa===e.id).length}</span></button>`).join('');
   const H=L.filter(c=>['late','today'].includes(stLead(c))).sort(ordL);$('todayN').textContent=H.length;
-  $('todayList').innerHTML=H.length?H.map(c=>{const e=ETAPAS.find(x=>x.id===c.etapa)||ETAPAS[0];return`<div class="tchip ${stLead(c)}" data-lead="${c.id}"><b>${e.ico} ${esc(c.nome)}</b><small>${esc(e.nome)} · ${esc(rotLead(c))}${isDir()?' · '+esc(nomeDe(c.corretor_id)):''}</small></div>`}).join(''):'<div style="color:var(--muted)">Nada pendente pra hoje. 👍 Bom momento pra prospectar.</div>';
+  $('todayList').innerHTML=H.length?H.map(c=>{const e=ETAPAS.find(x=>x.id===c.etapa)||ETAPAS[0];return`<div class="tchip ${stLead(c)}" data-lead="${c.id}"><b>${e.ico} ${esc(c.nome)}</b><small>${esc(e.nome)} · ${esc(rotLead(c))}${gestor()?' · '+esc(nomeDe(c.corretor_id)):''}</small></div>`}).join(''):'<div style="color:var(--muted)">Nada pendente pra hoje. 👍 Bom momento pra prospectar.</div>';
   const cols=S.lFiltro==='todos'?ETAPAS:ETAPAS.filter(e=>e.id===S.lFiltro);
   $('board').className='board'+(S.lFiltro==='todos'?'':' single');
   $('board').innerHTML=cols.map(e=>{const cs=L.filter(c=>c.etapa===e.id).sort(ordL);
@@ -504,7 +508,7 @@ function rLeads(){
 function cardLead(c){const st=stLead(c);const ult=(c.notas||[]).slice(-1)[0];const obs=c.busca||ult?.t||'';const im=S.imoveis.find(i=>i.id===c.imovel_id);
   return`<div class="card ${st==='late'?'late':st==='today'?'today':''}" draggable="true" data-lead="${c.id}"><div class="nm">${esc(c.nome)}</div>
   <div class="ph">${esc([c.tel,c.origem].filter(Boolean).join(' · '))}</div>${obs?`<div class="obs">${esc(obs)}</div>`:''}
-  <div class="meta">${c.data&&!FINAIS.includes(c.etapa)?`<span class="pill ${st==='fut'?'':st}">📅 ${esc(rotLead(c))}</span>`:''}${im?`<span class="pill br">🏠 ${esc(im.codigo||im.titulo).slice(0,22)}</span>`:''}${(c.notas||[]).length?`<span class="pill">📝 ${c.notas.length}</span>`:''}${isDir()?`<span class="pill blue">👤 ${esc(nomeDe(c.corretor_id).split(' ')[0])}</span>`:''}</div></div>`}
+  <div class="meta">${c.data&&!FINAIS.includes(c.etapa)?`<span class="pill ${st==='fut'?'':st}">📅 ${esc(rotLead(c))}</span>`:''}${im?`<span class="pill br">🏠 ${esc(im.codigo||im.titulo).slice(0,22)}</span>`:''}${(c.notas||[]).length?`<span class="pill">📝 ${c.notas.length}</span>`:''}${gestor()?`<span class="pill blue">👤 ${esc(nomeDe(c.corretor_id).split(' ')[0])}</span>`:''}</div></div>`}
 $('lTabs').onclick=e=>{const b=e.target.closest('[data-f]');if(b){S.lFiltro=b.dataset.f;rLeads()}};
 $('lBusca').oninput=e=>{S.lBusca=e.target.value;rLeads()};
 $('lCorretor').onchange=e=>{S.lCor=e.target.value;rLeads()};
@@ -529,7 +533,7 @@ function abrirLead(id){const c=id?S.leads.find(x=>x.id===id):null;if(id&&!c)retu
   $('mlEtapa').value=c?.etapa||(S.lFiltro!=='todos'?S.lFiltro:'novo');$('mlEtapa').onchange();
   $('mlOrigem').value=c?.origem||'';$('mlData').value=c?.data||'';$('mlHora').value=c?.hora||'';$('mlBusca').value=c?.busca||'';$('mlNText').value='';
   $('mlImovel').innerHTML='<option value="">— nenhum —</option>'+opts(S.imoveis.map(i=>({v:i.id,t:(i.codigo?i.codigo+' · ':'')+i.titulo})),c?.imovel_id||'');
-  $('mlCorretor').innerHTML=opts(ativos().map(p=>({v:p.id,t:p.nome})),c?.corretor_id||S.lCor||S.me.id);
+  $('mlCorretor').innerHTML=opts(equipe().map(p=>({v:p.id,t:p.nome})),c?.corretor_id||S.lCor||S.me.id);
   const dig=(c?.tel||'').replace(/\D/g,'');$('mlWa').classList.toggle('hide',dig.length<10);if(dig.length>=10)$('mlWa').href='https://wa.me/'+(dig.length<=11?'55'+dig:dig);
   notasR();abrirOv('ovLead',!!c);setTimeout(()=>(c?$('mlNText'):$('mlNome')).focus(),60)}
 function notasR(){$('mlNotas').innerHTML=mlNotas.length?mlNotas.map((n,i)=>`<div class="nitem">${esc(n.t)}<small>${new Date(n.em).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}${n.por?' · '+esc(n.por):''}</small><button class="del" data-i="${i}">✕</button></div>`).join(''):'<div style="color:#777;font-size:13px;margin-bottom:8px">Nenhuma observação ainda.</div>'}
@@ -540,7 +544,7 @@ $('mlSave').onclick=async()=>{const nome=$('mlNome').value.trim();if(!nome){$('m
   if($('mlNText').value.trim())addNota();
   const row={nome,tel:$('mlTel').value.trim(),etapa:$('mlEtapa').value,origem:$('mlOrigem').value||null,data:$('mlData').value||null,hora:$('mlHora').value||null,
     busca:$('mlBusca').value.trim()||null,notas:mlNotas,imovel_id:$('mlImovel').value||null,atualizado:new Date().toISOString()};
-  if(isDir())row.corretor_id=$('mlCorretor').value;else if(!mlId)row.corretor_id=S.me.id;
+  if(gestor())row.corretor_id=$('mlCorretor').value;else if(!mlId)row.corretor_id=S.me.id;
   const q=mlId?sb.from('leads').update(row).eq('id',mlId):sb.from('leads').insert(row);
   const{error}=await q;if(error)return falha(error);fecharOv();toast('Lead salvo ✓');await carregar('leads');render()};
 delHandler('ovLead',async()=>{const{error}=await sb.from('leads').delete().eq('id',mlId);if(error)return falha(error);await carregar('leads');render();toast('Lead excluído')});
@@ -641,7 +645,7 @@ const COR_REC='#0f9f8f',COR_PAG='#d2783a';
 function hbar(rows,fmt=v=>v){const max=Math.max(1,...rows.map(r=>r.v));
   return rows.map(r=>`<div class="hb" data-tip="${esc(r.tip||r.l+': '+fmt(r.v))}" ${r.go?`data-go="${r.go}" style="cursor:pointer"`:''}><span class="lb">${esc(r.l)}</span><div class="tr"><div class="br" style="width:${(r.v/max*100).toFixed(1)}%;background:${r.c||'var(--brand2)'}"></div></div><span class="vl">${fmt(r.v)}</span></div>`).join('')}
 function rDash(){
-  const dir=isDir(),L=S.leads,A=L.filter(c=>!FINAIS.includes(c.etapa)),mes=hojeISO().slice(0,7);
+  const dir=isDir(),ger=isGer(),gest=dir||ger,L=S.leads,A=L.filter(c=>!FINAIS.includes(c.etapa)),mes=hojeISO().slice(0,7);
   const atr=A.filter(c=>stLead(c)==='late').length,hj=A.filter(c=>stLead(c)==='today').length;
   const vis=L.filter(c=>c.etapa==='visita'&&c.data&&diff(c.data)>=0&&diff(c.data)<=7).length;
   const fech=L.filter(c=>c.etapa==='fechado'&&(c.atualizado||'').slice(0,7)===mes).length;
@@ -655,11 +659,11 @@ function rDash(){
     {ic:'📅',l:'Para hoje',v:hj,s:'contatos e visitas',go:'leads',k:'#f59e0b'},
     {ic:'🏠',l:'Visitas 7 dias',v:vis,s:'agendadas',go:'leads:visita',k:'#22c55e'},
     {ic:'🏆',l:'Fechados no mês',v:fech,s:new Date().toLocaleDateString('pt-BR',{month:'long'}),go:'leads:fechado',k:'#16a34a'},
-    dir?{ic:'💼',l:'Carteira disponível',v:brlK(vgv),s:disp.length+' imóveis',go:'imoveis',k:'#B15F28'}:{ic:'💰',l:'Comissões a receber',v:brlK(rec),s:'neste mês',go:'fin',k:COR_REC},
+    gest?{ic:'💼',l:'Carteira disponível',v:brlK(vgv),s:disp.length+' imóveis',go:'imoveis',k:'#B15F28'}:{ic:'💰',l:'Comissões a receber',v:brlK(rec),s:'neste mês',go:'fin',k:COR_REC},
     ...(dir?[{ic:'💰',l:'Saldo previsto',v:brlK(rec-pag),s:'a receber − a pagar no mês',go:'fin',k:rec-pag<0?'#ef4444':COR_REC}]:[])];
   const funil=ETAPAS.map(e=>({l:e.ico+' '+e.nome,v:L.filter(c=>c.etapa===e.id).length,c:e.c,go:'leads:'+e.id}));
   const ag=A.filter(c=>c.data&&diff(c.data)<=7).sort((a,b)=>(a.data+(a.hora||''))<(b.data+(b.hora||''))?-1:1).slice(0,30);
-  const rank=ativos().map(p=>{const m=L.filter(c=>c.corretor_id===p.id);return{p,at:m.filter(c=>!FINAIS.includes(c.etapa)).length,atr:m.filter(c=>stLead(c)==='late').length,vi:m.filter(c=>c.etapa==='visita').length,fe:m.filter(c=>c.etapa==='fechado').length}}).sort((a,b)=>b.at-a.at);
+  const rank=equipe().map(p=>{const m=L.filter(c=>c.corretor_id===p.id);return{p,at:m.filter(c=>!FINAIS.includes(c.etapa)).length,atr:m.filter(c=>stLead(c)==='late').length,vi:m.filter(c=>c.etapa==='visita').length,fe:m.filter(c=>c.etapa==='fechado').length}}).sort((a,b)=>b.at-a.at);
   const rmax=Math.max(1,...rank.map(r=>r.at));
   const og={};A.forEach(c=>{const k=(c.origem||'Não informado').replace(/\s*\(\d+\)$/,'');og[k]=(og[k]||0)+1});
   let ogs=Object.entries(og).sort((a,b)=>b[1]-a[1]);if(ogs.length>7){const r=ogs.slice(6).reduce((s,x)=>s+x[1],0);ogs=ogs.slice(0,6).concat([['Outros',r]])}
@@ -669,18 +673,18 @@ function rDash(){
   const tp={};disp.forEach(i=>{tp[i.tipo||'Outro']=(tp[i.tipo||'Outro']||0)+1});const tps=Object.entries(tp).sort((a,b)=>b[1]-a[1]);
   const mm=m=>new Date(m+'-15T12:00:00').toLocaleDateString('pt-BR',{month:'short'}).replace('.','');
   $('dash').innerHTML=`
-  <div class="dhead"><div><h1>${saud}, ${esc(S.me.nome.split(' ')[0])} 👋</h1><p>${new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'})}${dir?' · visão de toda a equipe':' · seus números'}</p></div></div>
+  <div class="dhead"><div><h1>${saud}, ${esc(S.me.nome.split(' ')[0])} 👋</h1><p>${new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'})}${dir?' · visão de toda a equipe':ger?' · visão da equipe de corretores':' · seus números'}</p></div></div>
   <div class="kpis">${kpis.map(k=>`<div class="kpi" style="--k:${k.k}" data-go="${k.go}"><span class="ic">${k.ic}</span><small>${k.l}</small><b>${k.v}</b><span>${esc(k.s)}</span></div>`).join('')}</div>
   <div class="dgrid">
     <div class="box w7"><h3>Funil de leads</h3><div class="sub">Clientes em cada etapa · clique numa barra para abrir</div>${hbar(funil)}</div>
     <div class="box w5"><h3>Agenda dos próximos 7 dias</h3><div class="sub">Atrasados, hoje e próximos contatos e visitas</div>
       <div class="ag">${ag.length?ag.map(c=>{const e=ETAPAS.find(x=>x.id===c.etapa)||ETAPAS[0];const n=diff(c.data);const d=new Date(c.data+'T12:00:00');
         return`<div class="agi" style="--c:${n<0?'#ef4444':n===0?'#f59e0b':e.c}" data-lead="${c.id}"><div class="d"><b>${pad(d.getDate())}</b><small>${n<0?'atras.':n===0?'hoje':d.toLocaleDateString('pt-BR',{weekday:'short'}).replace('.','')}</small></div>
-        <div class="t"><b>${esc(c.nome)}</b><small>${e.ico} ${esc(e.nome)}${c.hora?' · '+esc(c.hora):''}${dir?' · '+esc(nomeDe(c.corretor_id).split(' ')[0]):''}</small></div></div>`}).join(''):'<div style="color:var(--muted);padding:20px;text-align:center">Nenhum compromisso nos próximos 7 dias.<br>Ótimo momento para prospectar. 🚀</div>'}</div></div>
-    ${dir?`<div class="box w7"><h3>Desempenho por corretor</h3><div class="sub">Leads ativos, atrasados, em visita e fechados</div>
+        <div class="t"><b>${esc(c.nome)}</b><small>${e.ico} ${esc(e.nome)}${c.hora?' · '+esc(c.hora):''}${gest?' · '+esc(nomeDe(c.corretor_id).split(' ')[0]):''}</small></div></div>`}).join(''):'<div style="color:var(--muted);padding:20px;text-align:center">Nenhum compromisso nos próximos 7 dias.<br>Ótimo momento para prospectar. 🚀</div>'}</div></div>
+    ${gest?`<div class="box w7"><h3>Desempenho por corretor</h3><div class="sub">Leads ativos, atrasados, em visita e fechados</div>
       <table class="rk"><thead><tr><th>Corretor</th><th>Ativos</th><th></th><th>Atras.</th><th>Visita</th><th>Fech.</th></tr></thead><tbody>
       ${rank.map(r=>`<tr><td><b>${esc(r.p.nome)}</b></td><td>${r.at}</td><td style="width:30%"><div class="mini"><i style="width:${r.at/rmax*100}%"></i></div></td><td style="color:${r.atr?'#fca5a5':'inherit'}">${r.atr}</td><td>${r.vi}</td><td>${r.fe}</td></tr>`).join('')}</tbody></table></div>`:''}
-    <div class="box ${dir?'w5':'w7'}"><h3>De onde vêm os leads</h3><div class="sub">Origem dos leads ativos</div>${ogs.length?hbar(ogs.map(([l,v])=>({l,v}))):'<div style="color:var(--muted)">Sem dados ainda.</div>'}</div>
+    <div class="box ${gest?'w5':'w7'}"><h3>De onde vêm os leads</h3><div class="sub">Origem dos leads ativos</div>${ogs.length?hbar(ogs.map(([l,v])=>({l,v}))):'<div style="color:var(--muted)">Sem dados ainda.</div>'}</div>
     ${dir?`<div class="box w7"><h3>Fluxo financeiro</h3><div class="sub">A receber × a pagar por mês de vencimento</div>
       <div class="leg"><span><i style="background:${COR_REC}"></i>A receber</span><span><i style="background:${COR_PAG}"></i>A pagar</span></div>
       <div class="vb">${flx.map(x=>`<div class="g"><div class="c" style="height:${x.r/fmax*100}%;background:${COR_REC}" data-tip="${mm(x.m)} · A receber: ${brl(x.r)}"></div><div class="c" style="height:${x.p/fmax*100}%;background:${COR_PAG}" data-tip="${mm(x.m)} · A pagar: ${brl(x.p)}"></div></div>`).join('')}</div>
@@ -723,7 +727,7 @@ function rEquipe(){if(!isDir())return;const P=[...S.perfis].sort((a,b)=>(a.ativo
   $('eList').innerHTML=rImport()+`<table><thead><tr><th>Nome</th><th class="hidem">E-mail</th><th>Papel</th><th>Acesso</th><th class="num hidem">Leads ativos</th></tr></thead><tbody>${P.map(p=>{const eu=p.id===S.me.id;
    const nl=S.leads.filter(l=>l.corretor_id===p.id&&!FINAIS.includes(l.etapa)).length;
    return`<tr><td><b>${esc(p.nome)}</b>${eu?' <span class="pill br">você</span>':''}</td><td class="hidem">${esc(p.email||'')}</td>
-   <td>${eu?'Diretor':`<select class="sel" data-papel="${p.id}" style="padding:6px 8px">${opts([{v:'corretor',t:'Corretor'},{v:'diretor',t:'Diretor'}],p.papel)}</select>`}</td>
+   <td>${eu?'Diretor':`<select class="sel" data-papel="${p.id}" style="padding:6px 8px">${opts([{v:'corretor',t:'Corretor'},{v:'gerente',t:'Gerente'},{v:'diretor',t:'Diretor'}],p.papel)}</select>`}</td>
    <td>${eu?'<span class="pill green">Liberado</span>':p.ativo?`<button class="btn ghost sm" data-ativo="${p.id}" data-val="0">Bloquear</button>`:`<button class="btn sm" data-ativo="${p.id}" data-val="1">✓ Liberar acesso</button>`}</td>
    <td class="num hidem">${nl}</td></tr>`}).join('')}</tbody></table>`}
 $('eList').onclick=async e=>{const b=e.target.closest('[data-ativo]');if(!b)return;const{error}=await sb.from('profiles').update({ativo:b.dataset.val==='1'}).eq('id',b.dataset.ativo);
