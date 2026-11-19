@@ -297,3 +297,39 @@ create policy p_upd on public.profiles for update to authenticated
   with check (public.is_master() or (public.is_diretor() and not master));
 
 select nome, email, papel, master from public.profiles where papel = 'diretor';
+-- MÓDULO DE VENDAS
+create table if not exists public.vendas (
+  id uuid primary key default gen_random_uuid(),
+  lead_id uuid references public.leads(id) on delete set null,
+  imovel_id uuid references public.imoveis(id) on delete set null,
+  imovel_desc text,
+  corretor_id uuid not null references public.profiles(id),
+  cliente text,
+  tipo text not null default 'Venda',
+  valor numeric not null default 0,
+  data date not null default current_date,
+  comissao_pct numeric,
+  comissao numeric,
+  obs text,
+  criado_por uuid references public.profiles(id) default auth.uid(),
+  criado timestamptz not null default now()
+);
+alter table public.vendas enable row level security;
+grant select, insert, update, delete on public.vendas to authenticated;
+
+-- mesma regra dos leads: quem vê o corretor vê a venda; corretor registra as dele; só diretor/gerente edita ou cancela
+drop policy if exists v_sel on public.vendas;
+create policy v_sel on public.vendas for select to authenticated using (public.pode_ver_lead(corretor_id));
+drop policy if exists v_ins on public.vendas;
+create policy v_ins on public.vendas for insert to authenticated with check (public.pode_ver_lead(corretor_id));
+drop policy if exists v_upd on public.vendas;
+create policy v_upd on public.vendas for update to authenticated
+  using ((public.is_diretor() or public.is_gerente()) and public.pode_ver_lead(corretor_id))
+  with check ((public.is_diretor() or public.is_gerente()) and public.pode_ver_lead(corretor_id));
+drop policy if exists v_del on public.vendas;
+create policy v_del on public.vendas for delete to authenticated
+  using (public.is_diretor() and public.pode_ver_lead(corretor_id));
+
+do $$ begin
+  begin alter publication supabase_realtime add table public.vendas; exception when others then null; end;
+end $$;

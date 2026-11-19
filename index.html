@@ -137,7 +137,7 @@ header .brand{cursor:pointer}
 /* ações rápidas */
 .qa{display:flex;gap:5px;margin-top:9px}
 .qa button,.qa a{flex:1;background:#3b3b3b;border:0;border-radius:7px;padding:6px 0;font-size:12.5px;font-weight:700;color:var(--text);text-align:center;text-decoration:none;white-space:nowrap}
-.qa button:hover{background:var(--brand)}.qa a{background:#14532d;color:#bbf7d0;flex:0 0 34px}.qa button[data-qa="perdido"]{flex:0 0 30px}.qa a:hover{background:#166534}
+.qa button:hover{background:var(--brand)}.qa a{background:#14532d;color:#bbf7d0;flex:0 0 34px}.qa button[data-qa="perdido"],.qa button[data-qa="ganhou"]{flex:0 0 30px}.qa a:hover{background:#166534}
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 12px}.chips button{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:7px 12px;font-size:13px}
 .chips button.on{border-color:var(--brand);background:#3a2a20}
 .aviso{background:#3a2a20;border:1px solid #5b3320;border-radius:12px;padding:12px 14px;margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:14px}
@@ -239,6 +239,7 @@ td.num,th.num{text-align:right;white-space:nowrap}
     <nav id="nav">
       <button data-v="dash" class="on">📊 Painel</button>
       <button data-v="leads">📋 Leads</button>
+      <button data-v="vendas">🏆 Vendas</button>
       <button data-v="imoveis">🏠 Imóveis</button>
       <button data-v="fin" id="navFin">💰 Financeiro</button>
       <button data-v="equipe" id="navEq">👥 Equipe</button>
@@ -252,6 +253,9 @@ td.num,th.num{text-align:right;white-space:nowrap}
 
   <!-- DASHBOARD -->
   <section class="view" id="vDash"><div class="dash" id="dash"></div></section>
+
+  <!-- VENDAS -->
+  <section class="view hide" id="vVendas"><div class="dash" id="vendas"></div></section>
 
   <!-- LEADS -->
   <section class="view hide" id="vLeads">
@@ -445,7 +449,7 @@ function toast(t){const el=$('toast');el.textContent=t;el.style.display='block';
 function falha(e){console.error(e);toast('Erro: '+(e?.message||'não consegui salvar'))}
 
 /* ================= ESTADO ================= */
-const S={me:null,perfis:[],leads:[],imoveis:[],fin:[],view:'dash',lFiltro:'todos',lBusca:'',lCor:'',fTab:'receber'};
+const S={me:null,perfis:[],leads:[],imoveis:[],fin:[],vendas:[],vAno:new Date().getFullYear(),vMes:'',vCor:'',view:'dash',lFiltro:'todos',lBusca:'',lCor:'',fTab:'receber'};
 const isDir=()=>S.me?.papel==='diretor';
 const isGer=()=>S.me?.papel==='gerente';
 const gestor=()=>isDir()||isGer();
@@ -499,23 +503,23 @@ async function iniciar(){
   await carregarTudo(); tempoReal(); setInterval(carregarTudo,120000);
 }
 async function carregar(t){
-  const ord={profiles:'nome',leads:'data',imoveis:'criado',financeiro:'vencimento'}[t];
+  const ord={profiles:'nome',leads:'data',imoveis:'criado',financeiro:'vencimento',vendas:'data'}[t];
   let data=[],de=0;
   while(true){const r=await sb.from(t).select('*').order(ord,{ascending:t!=='imoveis',nullsFirst:false}).order('id').range(de,de+999);
     if(r.error){console.error(r.error);return} data=data.concat(r.data); if(r.data.length<1000)break; de+=1000}
-  ({profiles:()=>S.perfis=data,leads:()=>S.leads=data,imoveis:()=>S.imoveis=data,financeiro:()=>S.fin=data})[t]();
+  ({profiles:()=>S.perfis=data,leads:()=>S.leads=data,imoveis:()=>S.imoveis=data,financeiro:()=>S.fin=data,vendas:()=>S.vendas=data})[t]();
 }
-async function carregarTudo(){await Promise.all(['profiles','leads','imoveis','financeiro'].map(carregar));render()}
+async function carregarTudo(){await Promise.all(['profiles','leads','imoveis','financeiro','vendas'].map(carregar));render()}
 const pend={};
 function tempoReal(){
-  ['leads','imoveis','financeiro','profiles'].forEach(t=>{
+  ['leads','imoveis','financeiro','profiles','vendas'].forEach(t=>{
     sb.channel('rt-'+t).on('postgres_changes',{event:'*',schema:'public',table:t},()=>{
       clearTimeout(pend[t]);pend[t]=setTimeout(async()=>{await carregar(t);render()},400)}).subscribe();
   });
 }
 
 /* ================= NAVEGAÇÃO ================= */
-const VIEWS={dash:'vDash',leads:'vLeads',imoveis:'vImoveis',fin:'vFin',equipe:'vEquipe'};
+const VIEWS={dash:'vDash',vendas:'vVendas',leads:'vLeads',imoveis:'vImoveis',fin:'vFin',equipe:'vEquipe'};
 function irPara(v){S.view=v;document.querySelectorAll('#nav button').forEach(x=>x.classList.toggle('on',x.dataset.v===v));
   Object.values(VIEWS).forEach(id=>$(id).classList.toggle('hide',id!==VIEWS[v]));render()}
 $('nav').onclick=e=>{const b=e.target.closest('[data-v]');if(b)irPara(b.dataset.v)};
@@ -524,7 +528,7 @@ $('tela').onclick=async()=>{try{document.fullscreenElement?await document.exitFu
 function tick(){const d=new Date();$('hora').textContent=pad(d.getHours())+':'+pad(d.getMinutes());$('data').textContent=d.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long'})}
 let dia=hojeISO();setInterval(()=>{tick();if(hojeISO()!==dia){dia=hojeISO();render()}},15000);tick();
 function render(){if(!S.me)return;
-  if(S.view==='dash')rDash();else if(S.view==='leads')rLeads();else if(S.view==='imoveis')rImoveis();else if(S.view==='fin')rFin();else rEquipe()}
+  if(S.view==='dash')rDash();else if(S.view==='vendas')rVendas();else if(S.view==='leads')rLeads();else if(S.view==='imoveis')rImoveis();else if(S.view==='fin')rFin();else rEquipe()}
 
 /* ================= LEADS ================= */
 function stLead(c){if(FINAIS.includes(c.etapa)||!c.data)return null;const n=diff(c.data);return n<0?'late':n===0?'today':n<=3?'soon':'fut'}
@@ -549,7 +553,7 @@ function rLeads(){
 function cardLead(c){const st=stLead(c);const ult=(c.notas||[]).slice(-1)[0];const obs=c.busca||ult?.t||'';const im=S.imoveis.find(i=>i.id===c.imovel_id);
   return`<div class="card ${st==='late'?'late':st==='today'?'today':''}" draggable="true" data-lead="${c.id}"><div class="nm">${esc(c.nome)}</div>
   <div class="ph">${esc([c.tel,c.origem].filter(Boolean).join(' · '))}</div>${obs?`<div class="obs">${esc(obs)}</div>`:''}
-  <div class="meta">${c.data&&!FINAIS.includes(c.etapa)?`<span class="pill ${st==='fut'?'':st}">📅 ${esc(rotLead(c))}</span>`:''}${im?`<span class="pill br">🏠 ${esc(im.codigo||im.titulo).slice(0,22)}</span>`:''}${(c.notas||[]).length?`<span class="pill">📝 ${c.notas.length}</span>`:''}${gestor()?`<span class="pill blue">👤 ${esc(nomeDe(c.corretor_id).split(' ')[0])}</span>`:''}</div>${FINAIS.includes(c.etapa)?'':`<div class="qa"><button data-qa="sem" data-id="${c.id}" data-tip="Liguei e não atendeu · reagenda +2 dias">📵 +2d</button><button data-qa="visita" data-id="${c.id}" data-tip="Marcar visita">🏠 Visita</button><button data-qa="colar" data-id="${c.id}" data-tip="Colar conversa do WhatsApp nas observações">📋 Colar</button>${waLink(c.tel)?`<a data-qa="wa" href="${waLink(c.tel)}" target="_blank" rel="noopener" data-tip="Abrir conversa com o cliente">💬</a>`:''}<button data-qa="perdido" data-id="${c.id}" data-tip="Marcar como perdido">✖</button></div>`}</div>`}
+  <div class="meta">${c.data&&!FINAIS.includes(c.etapa)?`<span class="pill ${st==='fut'?'':st}">📅 ${esc(rotLead(c))}</span>`:''}${im?`<span class="pill br">🏠 ${esc(im.codigo||im.titulo).slice(0,22)}</span>`:''}${(c.notas||[]).length?`<span class="pill">📝 ${c.notas.length}</span>`:''}${gestor()?`<span class="pill blue">👤 ${esc(nomeDe(c.corretor_id).split(' ')[0])}</span>`:''}</div>${FINAIS.includes(c.etapa)?'':`<div class="qa"><button data-qa="sem" data-id="${c.id}" data-tip="Liguei e não atendeu · reagenda +2 dias">📵 +2d</button><button data-qa="visita" data-id="${c.id}" data-tip="Marcar visita">🏠 Visita</button><button data-qa="colar" data-id="${c.id}" data-tip="Colar conversa do WhatsApp nas observações">📋 Colar</button>${waLink(c.tel)?`<a data-qa="wa" href="${waLink(c.tel)}" target="_blank" rel="noopener" data-tip="Abrir conversa com o cliente">💬</a>`:''}<button data-qa="ganhou" data-id="${c.id}" data-tip="Fechou negócio · registrar venda">🏆</button><button data-qa="perdido" data-id="${c.id}" data-tip="Marcar como perdido">✖</button></div>`}</div>`}
 $('lTabs').onclick=e=>{const b=e.target.closest('[data-f]');if(b){S.lFiltro=b.dataset.f;rLeads()}};
 $('lBusca').oninput=e=>{S.lBusca=e.target.value;rLeads()};
 $('lCorretor').onchange=e=>{S.lCor=e.target.value;rLeads()};
@@ -561,6 +565,7 @@ bd.addEventListener('dragend',()=>{document.querySelectorAll('.drop').forEach(x=
 bd.addEventListener('dragover',e=>{const col=e.target.closest('.col');if(!col||!dragId)return;e.preventDefault();document.querySelectorAll('.drop').forEach(x=>x!==col&&x.classList.remove('drop'));col.classList.add('drop')});
 bd.addEventListener('drop',async e=>{const col=e.target.closest('.col');if(!col||!dragId)return;e.preventDefault();const id=dragId;dragId=null;
   const c=S.leads.find(x=>x.id===id),et=col.dataset.etapa;if(!c||c.etapa===et)return;
+  if(et==='fechado'&&!vendaDoLead(id))return abrirVenda({lead:c});
   c.etapa=et;rLeads();const{error}=await sb.from('leads').update({etapa:et,atualizado:new Date().toISOString()}).eq('id',id);
   if(error)return falha(error);const e2=ETAPAS.find(x=>x.id===et);toast(`${c.nome} → ${e2.nome}`);if(e2.data&&!c.data)abrirLead(id)});
 
@@ -588,8 +593,11 @@ $('mlSave').onclick=async()=>{const nome=$('mlNome').value.trim();if(!nome){$('m
     busca:$('mlBusca').value.trim()||null,notas:mlNotas,imovel_id:$('mlImovel').value||null,atualizado:new Date().toISOString()};
   if(gestor())row.corretor_id=$('mlCorretor').value;else if(!mlId)row.corretor_id=S.me.id;
   const antes=mlId?S.leads.find(x=>x.id===mlId)?.corretor_id:null;
-  const q=mlId?sb.from('leads').update(row).eq('id',mlId):sb.from('leads').insert(row);
-  const{error}=await q;if(error)return falha(error);fecharOv();toast('Lead salvo ✓');await carregar('leads');render();
+  const virouFechado=row.etapa==='fechado'&&!(mlId&&vendaDoLead(mlId));
+  if(virouFechado)row.etapa=mlId?(S.leads.find(x=>x.id===mlId)?.etapa||'retornar'):'retornar';
+  const q=mlId?sb.from('leads').update(row).eq('id',mlId).select('id'):sb.from('leads').insert(row).select('id');
+  const{data:salvo,error}=await q;if(error)return falha(error);fecharOv();toast('Lead salvo ✓');await carregar('leads');render();
+  if(virouFechado){const lid=mlId||salvo?.[0]?.id;const L0=S.leads.find(x=>x.id===lid);if(L0)return abrirVenda({lead:L0})}
   const dono=row.corretor_id||antes;if(dono&&dono!==S.me.id&&dono!==antes)avisarCorretor({...row,corretor_id:dono})};
 delHandler('ovLead',async()=>{const{error}=await sb.from('leads').delete().eq('id',mlId);if(error)return falha(error);await carregar('leads');render();toast('Lead excluído')});
 
@@ -609,6 +617,7 @@ $('qBody').addEventListener('click',e=>{const b=e.target.closest('.chips button'
   b.parentElement.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
   if(b.dataset.d!=null)$('qData').value=addDias(+b.dataset.d)});
 async function acaoRapida(tipo,id){const c=S.leads.find(x=>x.id===id);if(!c)return;
+  if(tipo==='ganhou')return abrirVenda({lead:c});
   if(tipo==='sem'){const d=addDias(2);await atualizaLead(id,{data:d,etapa:['novo','repescagem'].includes(c.etapa)?'ligar':c.etapa,notas:[...(c.notas||[]),nota('📵 Liguei, não atendeu')]})&&toast(`${c.nome}: tentar de novo em ${fmtD(d).slice(0,5)}`);return}
   if(tipo==='visita'){
     sheet('🏠 Marcar visita · '+c.nome,`<div class="f"><label>Quando</label><div class="chips"><button data-d="0">Hoje</button><button data-d="1" class="on">Amanhã</button><button data-d="2">Depois de amanhã</button></div>
@@ -812,7 +821,7 @@ function rDash(){
     {ic:'🔥',l:'Atrasados',v:atr,s:atr?'precisam de retorno':'tudo em dia',go:'leads',k:'#ef4444'},
     {ic:'📅',l:'Para hoje',v:hj,s:'contatos e visitas',go:'leads',k:'#f59e0b'},
     {ic:'🏠',l:'Visitas 7 dias',v:vis,s:'agendadas',go:'leads:visita',k:'#22c55e'},
-    {ic:'🏆',l:'Fechados no mês',v:fech,s:new Date().toLocaleDateString('pt-BR',{month:'long'}),go:'leads:fechado',k:'#16a34a'},
+    {ic:'🏆',l:'Vendas no mês',v:brlK(S.vendas.filter(v=>(v.data||'').startsWith(mes)).reduce((s,v)=>s+(+v.valor||0),0)),s:S.vendas.filter(v=>(v.data||'').startsWith(mes)).length+' negócios em '+new Date().toLocaleDateString('pt-BR',{month:'long'}),go:'vendas',k:'#16a34a'},
     gest?{ic:'💼',l:'Carteira disponível',v:brlK(vgv),s:disp.length+' imóveis',go:'imoveis',k:'#B15F28'}:{ic:'💰',l:'Comissões a receber',v:brlK(rec),s:'neste mês',go:'fin',k:COR_REC},
     ...(dir?[{ic:'💰',l:'Saldo previsto',v:brlK(rec-pag),s:'a receber − a pagar no mês',go:'fin',k:rec-pag<0?'#ef4444':COR_REC}]:[])];
   const funil=ETAPAS.map(e=>({l:e.ico+' '+e.nome,v:L.filter(c=>c.etapa===e.id).length,c:e.c,go:'leads:'+e.id}));
@@ -854,6 +863,125 @@ $('dash').addEventListener('click',async e=>{if(e.target.id==='meuWaOk'){const n
   const g=e.target.closest('[data-go]');if(!g)return;const[v,et]=g.dataset.go.split(':');S.lFiltro=et||'todos';irPara(v)});
 document.addEventListener('mousemove',e=>{const t=e.target.closest&&e.target.closest('[data-tip]'),tip=$('tip');if(!t){tip.style.display='none';return}
   tip.textContent=t.dataset.tip;tip.style.display='block';tip.style.left=Math.min(e.clientX+14,innerWidth-270)+'px';tip.style.top=(e.clientY+14)+'px'});
+
+/* ================= VENDAS ================= */
+const vendaDoLead=id=>S.vendas.find(v=>v.lead_id===id);
+const nomeImovel=i=>i?((i.codigo?i.codigo+' · ':'')+i.titulo):'';
+let vdCtx=null;
+function abrirVenda({lead=null,venda=null}={}){
+  const v=venda||{},L0=lead||(v.lead_id?S.leads.find(x=>x.id===v.lead_id):null);vdCtx={venda:venda,lead:L0};
+  const imoSel=v.imovel_id||L0?.imovel_id||'';
+  const imos=S.imoveis.filter(i=>i.status==='Disponível'||i.id===imoSel);
+  const cor=v.corretor_id||L0?.corretor_id||S.me.id;const pct=v.comissao_pct??6;
+  const im0=S.imoveis.find(i=>i.id===imoSel);const val=v.valor??im0?.valor??'';
+  sheet(venda?'🏆 Editar venda':'🏆 Registrar venda'+(L0?' · '+L0.nome:''),`
+   <div class="f"><label>Unidade / imóvel vendido</label><select id="vdImo"><option value="">— selecione —</option>${opts(imos.map(i=>({v:i.id,t:nomeImovel(i)+(i.bairro?' – '+i.bairro:'')})),imoSel)}<option value="__outro" ${v.imovel_desc&&!v.imovel_id?'selected':''}>Outro (fora da carteira)</option></select>
+     <input id="vdImoDesc" class="${v.imovel_desc&&!v.imovel_id?'':'hide'}" style="margin-top:6px" placeholder="Descreva a unidade (ex.: Apto 302, Torre B – Riade)" value="${esc(v.imovel_desc||'')}"></div>
+   <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px">
+    <div class="f"><label>Tipo</label><select id="vdTipo">${opts(['Venda','Locação'],v.tipo||'Venda')}</select></div>
+    <div class="f"><label>Data</label><input type="date" id="vdData" value="${v.data||hojeISO()}"></div>
+    <div class="f"><label>Valor do negócio (R$)</label><input id="vdValor" inputmode="decimal" value="${val}"></div>
+    <div class="f"><label>Cliente</label><input id="vdCli" value="${esc(v.cliente||L0?.nome||'')}"></div>
+    <div class="f"><label>Comissão (%)</label><input id="vdPct" inputmode="decimal" value="${pct}"></div>
+    <div class="f"><label>Comissão (R$)</label><input id="vdCom" inputmode="decimal" value="${v.comissao??''}"></div>
+   </div>
+   <div class="f ${gestor()?'':'hide'}"><label>Corretor</label><select id="vdCor">${opts(equipe().map(p=>({v:p.id,t:p.nome})),cor)}</select></div>
+   ${isDir()&&!venda?`<label class="chk"><input type="checkbox" id="vdFin" checked> Lançar a comissão em "A receber" no Financeiro</label>`:''}
+   <div class="f"><label>Observações</label><input id="vdObs" value="${esc(v.obs||'')}" placeholder="Forma de pagamento, financiamento, permuta…"></div>
+   ${venda&&isDir()?`<button class="btn danger sm" id="vdDel" type="button">Cancelar esta venda</button>`:''}`,salvarVenda,venda?'Salvar':'Registrar venda');
+  const calc=()=>{const val=num($('vdValor').value),p=num($('vdPct').value);if(val!=null&&p!=null)$('vdCom').value=Math.round(val*p)/100};
+  $('vdValor').oninput=calc;$('vdPct').oninput=calc;if(!v.comissao)calc();
+  $('vdImo').onchange=()=>{const x=$('vdImo').value;$('vdImoDesc').classList.toggle('hide',x!=='__outro');const i=S.imoveis.find(i=>i.id===x);
+    if(i){if(i.valor)$('vdValor').value=i.valor;$('vdTipo').value=i.finalidade==='Aluguel'?'Locação':'Venda';calc()}};
+  if($('vdDel'))$('vdDel').onclick=cancelarVenda;
+}
+async function salvarVenda(){
+  const im=$('vdImo').value,valor=num($('vdValor').value);
+  if(!im)return toast('Selecione a unidade vendida'),false;
+  if(im==='__outro'&&!$('vdImoDesc').value.trim())return toast('Descreva a unidade'),false;
+  if(valor==null)return toast('Informe o valor'),false;
+  const{venda,lead}=vdCtx;const imovel_id=im==='__outro'?null:im;
+  const row={lead_id:lead?.id||venda?.lead_id||null,imovel_id,imovel_desc:im==='__outro'?$('vdImoDesc').value.trim():null,
+    corretor_id:gestor()?$('vdCor').value:(venda?.corretor_id||S.me.id),cliente:$('vdCli').value.trim()||null,tipo:$('vdTipo').value,
+    valor,data:$('vdData').value||hojeISO(),comissao_pct:num($('vdPct').value),comissao:num($('vdCom').value),obs:$('vdObs').value.trim()||null};
+  const lancar=$('vdFin')?.checked;
+  const{error}=venda?await sb.from('vendas').update(row).eq('id',venda.id):await sb.from('vendas').insert(row);
+  if(error){falha(error);return false}
+  // unidade sai da disponibilidade
+  if(imovel_id){await sb.from('imoveis').update({status:row.tipo==='Locação'?'Alugado':'Vendido',atualizado:new Date().toISOString()}).eq('id',imovel_id)}
+  if(venda&&venda.imovel_id&&venda.imovel_id!==imovel_id){await sb.from('imoveis').update({status:'Disponível'}).eq('id',venda.imovel_id)}
+  // lead vai para Fechado
+  if(row.lead_id){const L0=S.leads.find(x=>x.id===row.lead_id);
+    await sb.from('leads').update({etapa:'fechado',data:null,hora:null,imovel_id:imovel_id||L0?.imovel_id||null,atualizado:new Date().toISOString(),
+      notas:[...(L0?.notas||[]),...(venda?[]:[nota(`🏆 ${row.tipo} fechada: ${brl(valor)}${imovel_id?' · '+nomeImovel(S.imoveis.find(i=>i.id===imovel_id)):''}`)])]}).eq('id',row.lead_id)}
+  if(lancar&&row.comissao){await sb.from('financeiro').insert({tipo:'receber',categoria:row.tipo==='Locação'?'Comissão de locação':'Comissão de venda',
+    descricao:`Comissão ${row.tipo.toLowerCase()} – ${row.cliente||''}${imovel_id?' – '+nomeImovel(S.imoveis.find(i=>i.id===imovel_id)):''}`.slice(0,140),
+    valor:row.comissao,vencimento:row.data,corretor_id:row.corretor_id,imovel_id})}
+  toast(venda?'Venda atualizada ✓':'🎉 Venda registrada!');await Promise.all(['vendas','leads','imoveis','financeiro'].map(carregar));render();return true}
+async function cancelarVenda(){const v=vdCtx.venda;if(!v)return;
+  sheet('Cancelar venda?',`<p style="color:var(--muted);margin:0">A venda de <b style="color:var(--text)">${esc(v.cliente||'')}</b> (${brl(v.valor)}) será apagada${v.imovel_id?' e a unidade volta a ficar <b style="color:var(--text)">Disponível</b>':''}. O lead volta para <b style="color:var(--text)">Aguardando retorno</b>.</p>`,async()=>{
+    const{error}=await sb.from('vendas').delete().eq('id',v.id);if(error){falha(error);return false}
+    if(v.imovel_id)await sb.from('imoveis').update({status:'Disponível'}).eq('id',v.imovel_id);
+    if(v.lead_id)await sb.from('leads').update({etapa:'retornar'}).eq('id',v.lead_id);
+    toast('Venda cancelada');await Promise.all(['vendas','leads','imoveis'].map(carregar));render();return true},'Sim, cancelar')}
+
+function vendasFiltradas(){return S.vendas.filter(v=>(v.data||'').startsWith(String(S.vAno))&&(!S.vMes||(v.data||'').slice(5,7)===S.vMes)&&(!S.vCor||v.corretor_id===S.vCor))}
+function rVendas(){
+  const V=vendasFiltradas(),verCom=!isGer(),anos=[...new Set([new Date().getFullYear(),...S.vendas.map(v=>+(v.data||'').slice(0,4)).filter(Boolean)])].sort((a,b)=>b-a);
+  const tot=V.reduce((s,v)=>s+(+v.valor||0),0),com=V.reduce((s,v)=>s+(+v.comissao||0),0);
+  const MES=['01','02','03','04','05','06','07','08','09','10','11','12'],nm=m=>new Date(`2000-${m}-15T12:00:00`).toLocaleDateString('pt-BR',{month:'short'}).replace('.','');
+  const porMes=MES.map(m=>{const x=S.vendas.filter(v=>(v.data||'').startsWith(S.vAno+'-'+m)&&(!S.vCor||v.corretor_id===S.vCor));return{m,v:x.reduce((s,y)=>s+(+y.valor||0),0),n:x.length}});
+  const pmax=Math.max(1,...porMes.map(x=>x.v));
+  const rk={};V.forEach(v=>{const k=v.corretor_id;rk[k]=rk[k]||{n:0,vgv:0,com:0};rk[k].n++;rk[k].vgv+=+v.valor||0;rk[k].com+=+v.comissao||0});
+  const rank=Object.entries(rk).sort((a,b)=>b[1].vgv-a[1].vgv),rmax=Math.max(1,...rank.map(r=>r[1].vgv));
+  const semVenda=S.leads.filter(l=>l.etapa==='fechado'&&!vendaDoLead(l.id));
+  const periodo=S.vMes?nm(S.vMes)+'/'+S.vAno:'em '+S.vAno;
+  $('vendas').innerHTML=`
+  <div class="dhead" style="justify-content:space-between"><div><h1>🏆 Vendas</h1><p>${V.length} negócio${V.length===1?'':'s'} ${periodo}${S.vCor?' · '+esc(nomeDe(S.vCor)):''}</p></div>
+   <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <select class="sel" id="vAno">${opts(anos.map(a=>({v:String(a),t:String(a)})),String(S.vAno))}</select>
+    <select class="sel" id="vMes"><option value="">Ano todo</option>${MES.map(m=>`<option value="${m}" ${S.vMes===m?'selected':''}>${nm(m)}</option>`).join('')}</select>
+    ${gestor()?`<select class="sel" id="vCor"><option value="">Todos os corretores</option>${opts(equipe().map(p=>({v:p.id,t:p.nome})),S.vCor)}</select>`:''}
+    <button class="btn ghost" id="vCsv">⬇️ Relatório</button><button class="btn" id="vNova">+ Registrar venda</button></div></div>
+  <div class="kpis">
+   <div class="kpi" style="--k:#16a34a"><span class="ic">💰</span><small>VGV ${periodo}</small><b>${brlK(tot)}</b><span>valor total negociado</span></div>
+   <div class="kpi" style="--k:#3b82f6"><span class="ic">🤝</span><small>Negócios</small><b>${V.length}</b><span>${(n=>n+(n===1?' venda':' vendas'))(V.filter(v=>v.tipo==='Venda').length)} · ${(n=>n+(n===1?' locação':' locações'))(V.filter(v=>v.tipo==='Locação').length)}</span></div>
+   <div class="kpi" style="--k:#a855f7"><span class="ic">🎯</span><small>Ticket médio</small><b>${brlK(V.length?tot/V.length:0)}</b><span>por negócio</span></div>
+   ${verCom?`<div class="kpi" style="--k:${COR_REC}"><span class="ic">💵</span><small>Comissões</small><b>${brlK(com)}</b><span>${tot?(com/tot*100).toFixed(1).replace('.',','):'0'}% do VGV</span></div>`:''}
+  </div>
+  ${semVenda.length&&gestor()?`<div class="aviso">⚠️ <b>${semVenda.length} leads em "Fechado" sem venda registrada.</b> <span style="color:var(--muted)">Registre para entrarem nos relatórios:</span>
+    ${semVenda.slice(0,6).map(l=>`<button class="btn ghost sm" data-regv="${l.id}">${esc(l.nome.split(' ').slice(0,2).join(' '))}</button>`).join('')}${semVenda.length>6?`<span style="color:var(--muted)">+${semVenda.length-6}</span>`:''}</div>`:''}
+  <div class="dgrid">
+   <div class="box w7"><h3>VGV por mês · ${S.vAno}</h3><div class="sub">Clique num mês para filtrar</div>
+     <div class="vb">${porMes.map(x=>`<div class="g" data-vmes="${x.m}" style="cursor:pointer"><div class="c" style="height:${x.v/pmax*100}%;background:${S.vMes===x.m?'var(--brand2)':'#16a34a'};width:min(34px,70%)" data-tip="${nm(x.m)}: ${brl(x.v)} · ${x.n} negócio${x.n===1?'':'s'}"></div></div>`).join('')}</div>
+     <div class="vbl">${porMes.map(x=>`<span>${nm(x.m)}</span>`).join('')}</div></div>
+   <div class="box w5"><h3>Ranking por corretor</h3><div class="sub">${periodo}</div>
+     ${rank.length?`<table class="rk"><thead><tr><th>Corretor</th><th>Nº</th><th>VGV</th><th></th>${verCom?'<th>Comissão</th>':''}</tr></thead><tbody>
+     ${rank.map(([id,r],k)=>`<tr data-vcor="${id}" style="cursor:pointer"><td><b>${['🥇','🥈','🥉'][k]||''} ${esc(nomeDe(id))}</b></td><td>${r.n}</td><td>${brlK(r.vgv)}</td><td style="width:22%"><div class="mini"><i style="width:${r.vgv/rmax*100}%;background:#16a34a"></i></div></td>${verCom?`<td>${brlK(r.com)}</td>`:''}</tr>`).join('')}</tbody></table>`
+     :'<div style="color:var(--muted);padding:16px 0">Nenhuma venda no período.</div>'}</div>
+   <div class="box w12"><h3>Negócios fechados</h3><div class="sub">Clique para ver ou editar</div>
+     ${V.length?`<table class="rk"><thead><tr><th>Data</th><th>Cliente</th><th>Unidade</th><th class="hidem">Corretor</th><th>Tipo</th><th class="num">Valor</th>${verCom?'<th class="num hidem">Comissão</th>':''}</tr></thead><tbody>
+     ${[...V].sort((a,b)=>a.data<b.data?1:-1).map(v=>{const i=S.imoveis.find(x=>x.id===v.imovel_id);return`<tr data-venda="${v.id}" style="cursor:pointer"><td>${fmtD(v.data)}</td><td><b>${esc(v.cliente||'—')}</b></td><td>${esc(i?nomeImovel(i):v.imovel_desc||'—')}</td><td class="hidem">${esc(nomeDe(v.corretor_id))}</td><td>${v.tipo==='Locação'?'<span class="pill blue">Locação</span>':'<span class="pill green">Venda</span>'}</td><td class="num"><b>${brl(v.valor)}</b></td>${verCom?`<td class="num hidem">${brl(v.comissao)}</td>`:''}</tr>`}).join('')}</tbody></table>`
+     :'<div class="empty">Nenhuma venda registrada neste período. Quando um lead for para <b>Fechado</b>, a venda aparece aqui.</div>'}</div>
+  </div>`;
+}
+$('vendas').addEventListener('click',e=>{const t=e.target;
+  if(t.id==='vNova')return abrirVenda({});
+  if(t.id==='vCsv')return baixarCsv();
+  const r=t.closest('[data-venda]');if(r)return abrirVenda({venda:S.vendas.find(v=>v.id===r.dataset.venda)});
+  const m=t.closest('[data-vmes]');if(m){S.vMes=S.vMes===m.dataset.vmes?'':m.dataset.vmes;return rVendas()}
+  const c=t.closest('[data-vcor]');if(c&&gestor()){S.vCor=S.vCor===c.dataset.vcor?'':c.dataset.vcor;return rVendas()}
+  const g=t.closest('[data-regv]');if(g)return abrirVenda({lead:S.leads.find(l=>l.id===g.dataset.regv)})});
+$('vendas').addEventListener('change',e=>{const id=e.target.id;if(id==='vAno')S.vAno=+e.target.value;if(id==='vMes')S.vMes=e.target.value;if(id==='vCor')S.vCor=e.target.value;rVendas()});
+function baixarCsv(){const V=vendasFiltradas(),verCom=!isGer(),q=s=>'"'+String(s??'').replace(/"/g,'""')+'"',nb=n=>n==null?'':String(n).replace('.',',');
+  const head=['Data','Mês','Cliente','Unidade','Bairro','Corretor','Tipo','Valor',...(verCom?['Comissão %','Comissão R$']:[]),'Observações'];
+  const linhas=V.sort((a,b)=>a.data<b.data?-1:1).map(v=>{const i=S.imoveis.find(x=>x.id===v.imovel_id);
+    return[fmtD(v.data),(v.data||'').slice(0,7),v.cliente,i?nomeImovel(i):v.imovel_desc,i?.bairro,nomeDe(v.corretor_id),v.tipo,nb(v.valor),...(verCom?[nb(v.comissao_pct),nb(v.comissao)]:[]),v.obs].map(q).join(';')});
+  const rk={};V.forEach(v=>{const k=nomeDe(v.corretor_id);rk[k]=rk[k]||[0,0,0];rk[k][0]++;rk[k][1]+=+v.valor||0;rk[k][2]+=+v.comissao||0});
+  const resumo=['','"RESUMO POR CORRETOR"',['Corretor','Negócios','VGV',...(verCom?['Comissões']:[])].map(q).join(';'),...Object.entries(rk).map(([k,r])=>[k,r[0],nb(r[1]),...(verCom?[nb(r[2])]:[])].map(q).join(';'))];
+  const csv='\ufeff'+[head.map(q).join(';'),...linhas,...resumo].join('\r\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  a.download=`vendas-ipiranga-${S.vAno}${S.vMes?'-'+S.vMes:''}.csv`;document.body.appendChild(a);a.click();a.remove()}
 
 /* ================= EQUIPE ================= */
 function rImport(){
