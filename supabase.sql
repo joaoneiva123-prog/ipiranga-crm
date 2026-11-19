@@ -213,3 +213,10 @@ language sql security definer set search_path = public as $$
   update public.profiles set whatsapp = numero where id = auth.uid()
 $$;
 grant execute on function public.set_meu_whatsapp(text) to authenticated;
+
+-- ---------- LOCALIZAÇÃO DOS IMÓVEIS ----------
+alter table public.imoveis add column if not exists cep text;
+alter table public.imoveis add column if not exists condominio text;
+alter table public.imoveis add column if not exists regiao text;
+alter table public.imoveis add column if not exists lat double precision;
+alter table public.imoveis add column if not exists lng double precision;
