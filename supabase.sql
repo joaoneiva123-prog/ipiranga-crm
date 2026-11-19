@@ -153,3 +153,17 @@ do $$ begin
   begin alter publication supabase_realtime add table public.imoveis;    exception when others then null; end;
   begin alter publication supabase_realtime add table public.financeiro; exception when others then null; end;
 end $$;
+
+-- ---------- PERMISSÕES (Supabase novo vem trancado) ----------
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on public.profiles, public.leads, public.imoveis, public.financeiro to authenticated;
+grant execute on function public.is_ativo(), public.is_diretor() to authenticated;
+
+-- ---------- CAMPOS DA IMPORTAÇÃO DO SISTEMA ANTIGO ----------
+alter table public.imoveis add column if not exists origem_id text;
+alter table public.imoveis add column if not exists descricao text;
+alter table public.imoveis add column if not exists fotos jsonb not null default '[]'::jsonb;
+alter table public.leads   add column if not exists origem_id text;
+alter table public.leads   add column if not exists responsavel_origem text;
+create unique index if not exists imoveis_origem_uk on public.imoveis(origem_id);
+create unique index if not exists leads_origem_uk   on public.leads(origem_id);

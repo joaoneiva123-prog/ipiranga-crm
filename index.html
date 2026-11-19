@@ -99,6 +99,9 @@ nav button.on{background:#3a2a20;color:var(--text)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px}
 .icard{background:var(--panel);border-radius:12px;padding:14px;cursor:pointer;border-top:4px solid var(--brand)}
 .icard:hover{background:#2c2c2c}
+.icard .thumb{width:calc(100% + 28px);margin:-14px -14px 10px;height:170px;object-fit:cover;display:block;border-radius:8px 8px 0 0;background:#333}
+.gal{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px}.gal a img{height:110px;border-radius:8px;display:block}
+.imp{background:var(--panel);border-radius:12px;padding:16px;margin-bottom:14px}.imp h3{margin:0 0 6px;font-size:16px}.imp p{margin:0 0 10px;color:var(--muted);font-size:13px}
 .icard .cod{font-size:12px;color:var(--muted)}.icard h4{margin:2px 0 4px;font-size:16px}
 .icard .val{font-size:20px;font-weight:800;color:var(--brand2);margin:6px 0}
 .icard .spec{font-size:13px;color:var(--muted)}
@@ -286,7 +289,9 @@ td.num,th.num{text-align:right;white-space:nowrap}
     <div class="f s2"></div>
     <div class="f"><label>Proprietário</label><input id="miProp"></div>
     <div class="f"><label>Tel. proprietário</label><input id="miPropTel"></div>
-    <div class="f full"><label>Observações</label><textarea id="miObs" placeholder="Aceita permuta, chave na portaria, não mostrar interior nos anúncios…"></textarea></div>
+    <div class="f full hide" id="miGalBox"><label>Fotos</label><div class="gal" id="miGal"></div></div>
+    <div class="f full"><label>Descrição do anúncio</label><textarea id="miDesc"></textarea></div>
+    <div class="f full"><label>Observações internas</label><textarea id="miObs" placeholder="Aceita permuta, chave na portaria, não mostrar interior nos anúncios…"></textarea></div>
     <div class="f full" id="miLeads"></div>
   </div>
   <div class="mfoot">
@@ -333,7 +338,7 @@ const ETAPAS=[
  {id:'negado',nome:'Negado / Perdido',ico:'✖️',c:'#6b7280',d:'Não quis, comprou com outro'},
  {id:'fechado',nome:'Fechado',ico:'🏆',c:'#16a34a',d:'Negócio fechado'}];
 const FINAIS=['negado','fechado'];
-const TIPOS=['Apartamento','Casa','Casa em condomínio','Sobrado','Lote','Chácara','Fazenda','Sala comercial','Galpão','Studio','Outro'];
+const TIPOS=['Apartamento','Casa','Casa em condomínio','Sobrado','Duplex','Lote','Chácara','Fazenda','Sala comercial','Galpão','Studio','Outro'];
 const STATUS=['Disponível','Reservado','Vendido','Alugado','Inativo'];
 const CAT_REC=['Comissão de venda','Comissão de locação','Taxa de administração','Avaliação / PTAM','Outros'];
 const CAT_PAG=['Comissão de corretor','Aluguel escritório','Marketing / Anúncios','Portais','Salários','Impostos','Sistemas','Água / Luz / Internet','Combustível','Outros'];
@@ -407,8 +412,9 @@ async function iniciar(){
 }
 async function carregar(t){
   const ord={profiles:'nome',leads:'data',imoveis:'criado',financeiro:'vencimento'}[t];
-  const{data,error}=await sb.from(t).select('*').order(ord,{ascending:t!=='imoveis',nullsFirst:false});
-  if(error){console.error(error);return}
+  let data=[],de=0;
+  while(true){const r=await sb.from(t).select('*').order(ord,{ascending:t!=='imoveis',nullsFirst:false}).order('id').range(de,de+999);
+    if(r.error){console.error(r.error);return} data=data.concat(r.data); if(r.data.length<1000)break; de+=1000}
   ({profiles:()=>S.perfis=data,leads:()=>S.leads=data,imoveis:()=>S.imoveis=data,financeiro:()=>S.fin=data})[t]();
 }
 async function carregarTudo(){await Promise.all(['profiles','leads','imoveis','financeiro'].map(carregar));render()}
@@ -505,7 +511,7 @@ function rImoveis(){const q=$('iBusca').value.trim().toLowerCase(),t=$('iTipo').
   const cor={'Disponível':'green','Reservado':'amber','Vendido':'red','Alugado':'blue','Inativo':''};
   $('iGrid').innerHTML=I.length?I.map(i=>{const nl=S.leads.filter(l=>l.imovel_id===i.id&&!FINAIS.includes(l.etapa)).length;
     const spec=[i.quartos!=null&&i.quartos+' qts',i.suites&&i.suites+' suítes',i.vagas!=null&&i.vagas+' vagas',i.area&&i.area+' m²'].filter(Boolean).join(' · ');
-    return`<div class="icard" data-imo="${i.id}"><div class="cod">${esc([i.codigo,i.tipo,i.finalidade].filter(Boolean).join(' · '))}</div><h4>${esc(i.titulo)}</h4><div class="spec">📍 ${esc(i.bairro||'—')}</div>
+    const f0=(i.fotos||[])[0];return`<div class="icard" data-imo="${i.id}">${f0?`<img class="thumb" loading="lazy" src="${esc(f0)}" alt="" onerror="this.remove()">`:''}<div class="cod">${esc([i.codigo,i.tipo,i.finalidade].filter(Boolean).join(' · '))}</div><h4>${esc(i.titulo)}</h4><div class="spec">📍 ${esc(i.bairro||'—')}</div>
     <div class="val">${i.valor?brl(i.valor):'Valor a definir'}</div><div class="spec">${esc(spec)}</div>
     <div class="meta"><span class="pill ${cor[i.status]||''}">${esc(i.status)}</span>${nl?`<span class="pill br">🔥 ${nl} lead${nl>1?'s':''}</span>`:''}</div></div>`}).join(''):'<div class="empty" style="grid-column:1/-1">Nenhum imóvel encontrado. Clique em <b>+ Novo imóvel</b>.</div>'}
 $('iGrid').onclick=e=>{const c=e.target.closest('[data-imo]');if(c)abrirImo(c.dataset.imo)};
@@ -514,6 +520,8 @@ let miId=null;
 function abrirImo(id){const i=id?S.imoveis.find(x=>x.id===id):null;miId=i?.id||null;$('miTitle').textContent=i?i.titulo:'Novo imóvel';
   const m={miTitulo:'titulo',miCodigo:'codigo',miBairro:'bairro',miEnd:'endereco',miQ:'quartos',miS:'suites',miV:'vagas',miA:'area',miProp:'proprietario',miPropTel:'tel_proprietario',miObs:'obs'};
   Object.entries(m).forEach(([k,f])=>$(k).value=i?.[f]??'');$('miValor').value=i?.valor??'';
+  $('miDesc').value=i?.descricao||'';const fts=i?.fotos||[];$('miGalBox').classList.toggle('hide',!fts.length);
+  $('miGal').innerHTML=fts.map(u=>`<a href="${esc(u)}" target="_blank" rel="noopener"><img loading="lazy" src="${esc(u)}" alt=""></a>`).join('');
   $('miTipo').value=i?.tipo||'Apartamento';$('miFin').value=i?.finalidade||'Venda';$('miStatus').value=i?.status||'Disponível';
   const L=i?S.leads.filter(l=>l.imovel_id===i.id):[];
   $('miLeads').innerHTML=L.length?`<label>Leads interessados</label><div class="meta">${L.map(l=>`<span class="pill br" style="cursor:pointer" data-lead="${l.id}" data-closefirst>${esc(l.nome)}</span>`).join('')}</div>`:'';
@@ -522,7 +530,7 @@ $('miLeads').onclick=e=>{const p=e.target.closest('[data-lead]');if(p){fecharOv(
 $('miSave').onclick=async()=>{const titulo=$('miTitulo').value.trim();if(!titulo){$('miTitulo').focus();return toast('Coloque o título do imóvel')}
   const row={titulo,codigo:$('miCodigo').value.trim()||null,tipo:$('miTipo').value,finalidade:$('miFin').value,bairro:$('miBairro').value.trim()||null,endereco:$('miEnd').value.trim()||null,
     valor:num($('miValor').value),quartos:int($('miQ').value),suites:int($('miS').value),vagas:int($('miV').value),area:num($('miA').value),status:$('miStatus').value,
-    proprietario:$('miProp').value.trim()||null,tel_proprietario:$('miPropTel').value.trim()||null,obs:$('miObs').value.trim()||null,atualizado:new Date().toISOString()};
+    proprietario:$('miProp').value.trim()||null,tel_proprietario:$('miPropTel').value.trim()||null,obs:$('miObs').value.trim()||null,descricao:$('miDesc').value.trim()||null,atualizado:new Date().toISOString()};
   const{error}=await(miId?sb.from('imoveis').update(row).eq('id',miId):sb.from('imoveis').insert(row));if(error)return falha(error);
   fecharOv();toast('Imóvel salvo ✓');await carregar('imoveis');render()};
 delHandler('ovImo',async()=>{const{error}=await sb.from('imoveis').delete().eq('id',miId);if(error)return falha(error);await carregar('imoveis');render();toast('Imóvel excluído')});
@@ -586,8 +594,32 @@ $('mfSave').onclick=async()=>{const descricao=$('mfDesc').value.trim(),valor=num
 delHandler('ovFin',async()=>{const{error}=await sb.from('financeiro').delete().eq('id',mfId);if(error)return falha(error);await carregar('financeiro');rFin();toast('Lançamento excluído')});
 
 /* ================= EQUIPE ================= */
+function rImport(){
+  const cont={};S.leads.forEach(l=>{if(l.responsavel_origem)cont[l.responsavel_origem]=(cont[l.responsavel_origem]||0)+1});
+  const nomes=Object.keys(cont).sort();
+  return`<div class="imp"><h3>📥 Importar backup do sistema antigo</h3><p>Selecione o arquivo <b>backup-ipiranga.json</b>. Pode importar de novo sem duplicar.</p>
+   <input type="file" id="impFile" accept=".json,application/json"> <span id="impMsg" style="margin-left:10px;color:var(--amber)">${esc(S.impMsg||'')}</span></div>
+   ${nomes.length?`<div class="imp"><h3>🔀 Passar leads importados para cada corretor</h3><p>Escolha quem vai cuidar dos leads de cada responsável do sistema antigo e clique em Transferir. O corretor precisa ter conta liberada.</p>
+   <table><thead><tr><th>Responsável no sistema antigo</th><th class="num">Leads</th><th>Passar para</th><th></th></tr></thead><tbody>
+   ${nomes.map(n=>{const sug=ativos().find(p=>p.nome.toLowerCase().split(' ')[0]===n.toLowerCase().split(' ')[0]);
+     return`<tr><td>${esc(n)}</td><td class="num">${cont[n]}</td><td><select class="sel" data-orig="${esc(n)}" style="padding:6px 8px">${opts(ativos().map(p=>({v:p.id,t:p.nome})),sug?.id||S.me.id)}</select></td><td><button class="btn sm" data-transf="${esc(n)}">Transferir</button></td></tr>`}).join('')}
+   </tbody></table></div>`:''}`}
+async function importar(file){
+  const msg=t=>{S.impMsg=t;const el=$('impMsg');if(el)el.textContent=t};
+  let d;try{d=JSON.parse(await file.text())}catch(e){return msg('Arquivo inválido')}
+  if(d.formato!=='ipiranga-import-1')return msg('Esse não é o arquivo de importação certo');
+  try{
+    for(let k=0;k<d.imoveis.length;k+=50){msg(`Imóveis ${k}/${d.imoveis.length}…`);
+      const{error}=await sb.from('imoveis').upsert(d.imoveis.slice(k,k+50),{onConflict:'origem_id',ignoreDuplicates:true});if(error)throw error}
+    const mapa={};let de=0;while(true){const{data,error}=await sb.from('imoveis').select('id,origem_id').not('origem_id','is',null).range(de,de+999);if(error)throw error;data.forEach(x=>mapa[x.origem_id]=x.id);if(data.length<1000)break;de+=1000}
+    const L=d.leads.map(({imovel_origem,...l})=>({...l,corretor_id:S.me.id,imovel_id:imovel_origem?mapa[imovel_origem]||null:null}));
+    for(let k=0;k<L.length;k+=100){msg(`Leads ${k}/${L.length}…`);
+      const{error}=await sb.from('leads').upsert(L.slice(k,k+100),{onConflict:'origem_id',ignoreDuplicates:true});if(error)throw error}
+    msg('✓ Importação concluída');await carregarTudo();toast(`Importados ${d.imoveis.length} imóveis e ${L.length} leads`);
+  }catch(e){console.error(e);msg('Erro: '+(e.message||e)+(/column|origem_id|fotos|descricao/.test(e.message||'')?' — rode o arquivo import-1-preparar.sql no Supabase':''))}
+}
 function rEquipe(){if(!isDir())return;const P=[...S.perfis].sort((a,b)=>(a.ativo===b.ativo?0:a.ativo?1:-1)||a.nome.localeCompare(b.nome));
-  $('eList').innerHTML=`<table><thead><tr><th>Nome</th><th class="hidem">E-mail</th><th>Papel</th><th>Acesso</th><th class="num hidem">Leads ativos</th></tr></thead><tbody>${P.map(p=>{const eu=p.id===S.me.id;
+  $('eList').innerHTML=rImport()+`<table><thead><tr><th>Nome</th><th class="hidem">E-mail</th><th>Papel</th><th>Acesso</th><th class="num hidem">Leads ativos</th></tr></thead><tbody>${P.map(p=>{const eu=p.id===S.me.id;
    const nl=S.leads.filter(l=>l.corretor_id===p.id&&!FINAIS.includes(l.etapa)).length;
    return`<tr><td><b>${esc(p.nome)}</b>${eu?' <span class="pill br">você</span>':''}</td><td class="hidem">${esc(p.email||'')}</td>
    <td>${eu?'Diretor':`<select class="sel" data-papel="${p.id}" style="padding:6px 8px">${opts([{v:'corretor',t:'Corretor'},{v:'diretor',t:'Diretor'}],p.papel)}</select>`}</td>
@@ -595,7 +627,12 @@ function rEquipe(){if(!isDir())return;const P=[...S.perfis].sort((a,b)=>(a.ativo
    <td class="num hidem">${nl}</td></tr>`}).join('')}</tbody></table>`}
 $('eList').onclick=async e=>{const b=e.target.closest('[data-ativo]');if(!b)return;const{error}=await sb.from('profiles').update({ativo:b.dataset.val==='1'}).eq('id',b.dataset.ativo);
   if(error)return falha(error);toast(b.dataset.val==='1'?'Acesso liberado ✓':'Acesso bloqueado');await carregar('profiles');rEquipe()};
-$('eList').onchange=async e=>{const s=e.target.closest('[data-papel]');if(!s)return;const{error}=await sb.from('profiles').update({papel:s.value}).eq('id',s.dataset.papel);
+$('eList').addEventListener('click',async e=>{const b=e.target.closest('[data-transf]');if(!b)return;e.stopImmediatePropagation();
+  const orig=b.dataset.transf,sel=[...document.querySelectorAll('[data-orig]')].find(s=>s.dataset.orig===orig),para=sel.value;b.disabled=true;
+  const{error}=await sb.from('leads').update({corretor_id:para,responsavel_origem:null}).eq('responsavel_origem',orig);
+  if(error){b.disabled=false;return falha(error)}toast(`Leads de ${orig} → ${nomeDe(para)} ✓`);await carregar('leads');rEquipe()},true);
+$('eList').onchange=async e=>{if(e.target.id==='impFile'){const f=e.target.files[0];if(f)importar(f);return}
+  const s=e.target.closest('[data-papel]');if(!s)return;const{error}=await sb.from('profiles').update({papel:s.value}).eq('id',s.dataset.papel);
   if(error)return falha(error);toast('Papel atualizado ✓');await carregar('profiles');rEquipe()};
 
 /* ================= MODAIS (genérico) ================= */
