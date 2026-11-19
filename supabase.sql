@@ -333,3 +333,12 @@ create policy v_del on public.vendas for delete to authenticated
 do $$ begin
   begin alter publication supabase_realtime add table public.vendas; exception when others then null; end;
 end $$;
+-- REGRAS DE COMISSÃO
+alter table public.profiles add column if not exists creci_definitivo boolean not null default false;
+alter table public.profiles add column if not exists split_pct numeric;  -- opcional: % especial de um corretor
+alter table public.vendas add column if not exists comissao_corretor numeric;
+alter table public.vendas add column if not exists pct_corretor numeric;
+alter table public.vendas add column if not exists comissao_gerente numeric;
+alter table public.vendas add column if not exists gerente_id uuid references public.profiles(id);
+alter table public.vendas add column if not exists comissao_ipiranga numeric;
+alter table public.vendas add column if not exists comissao_diretor boolean not null default false;
