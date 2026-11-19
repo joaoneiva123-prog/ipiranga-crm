@@ -283,9 +283,12 @@ td.num,th.num{text-align:right;white-space:nowrap}
       <select class="sel" id="iTipo"><option value="">Todos os tipos</option></select>
       <select class="sel" id="iStatus"><option value="">Todos os status</option></select>
       <select class="sel" id="iFin"><option value="">Venda e aluguel</option><option>Venda</option><option>Aluguel</option></select>
+      <input class="sel" id="iVmin" inputmode="numeric" placeholder="Valor mín. R$" style="width:130px">
+      <input class="sel" id="iVmax" inputmode="numeric" placeholder="Valor máx. R$" style="width:130px">
       <select class="sel" id="iReg"><option value="">Todas as regiões</option></select>
       <select class="sel" id="iCond"><option value="">Todos os condomínios</option></select>
       <div class="perto"><input class="sel" id="iPerto" placeholder="📍 Perto de: CEP ou endereço"><select class="sel" id="iRaio"><option value="1">1 km</option><option value="2" selected>2 km</option><option value="5">5 km</option><option value="10">10 km</option></select><button class="btn ghost sm" id="iPertoOk">Buscar</button></div>
+      <button class="btn ghost sm" id="iLimpar" type="button">✕ Limpar filtros</button>
       <div class="toggle"><button id="tgLista" class="on">▦ Lista</button><button id="tgMapa">🗺️ Mapa</button></div>
       <div class="stats"><div class="stat"><b id="iTotal">0</b><small>Imóveis</small></div><div class="stat green"><b id="iDisp">0</b><small>Disponíveis</small></div></div>
     </div>
@@ -705,14 +708,18 @@ document.addEventListener('click',e=>{const a=e.target.closest('[data-imo-pop]')
 
 /* ================= IMÓVEIS ================= */
 $('iTipo').innerHTML+=opts(TIPOS);$('iStatus').innerHTML+=opts(STATUS);$('miTipo').innerHTML=opts(TIPOS);$('miStatus').innerHTML=opts(STATUS);
-['iBusca','iTipo','iStatus','iFin','iReg','iCond'].forEach(id=>$(id).addEventListener('input',rImoveis));
+['iBusca','iTipo','iStatus','iFin','iReg','iCond','iVmin','iVmax'].forEach(id=>$(id).addEventListener('input',rImoveis));
+function vmoney(el){const d=soDig(el.value);el.value=d?(+d).toLocaleString('pt-BR'):''}
+['iVmin','iVmax'].forEach(id=>$(id).addEventListener('input',e=>vmoney(e.target)));
+$('iLimpar').onclick=()=>{['iBusca','iTipo','iStatus','iFin','iReg','iCond','iVmin','iVmax','iPerto'].forEach(id=>$(id).value='');$('iRaio').value='2';perto=null;rImoveis()};
 $('iReg').innerHTML+=opts(REGIOES);$('miReg').innerHTML='<option value="">—</option>'+opts(REGIOES);
 function rImoveis(){const q=$('iBusca').value.trim().toLowerCase(),t=$('iTipo').value,s=$('iStatus').value,f=$('iFin').value,rg=$('iReg').value,cd=$('iCond').value;
   const conds=[...new Set(S.imoveis.map(i=>i.condominio).filter(Boolean))].sort();
   $('iCond').innerHTML='<option value="">Todos os condomínios</option>'+opts(conds,cd);
   $('dlCond').innerHTML=conds.map(c=>`<option value="${esc(c)}">`).join('');
   $('dlBairro').innerHTML=[...new Set(S.imoveis.map(i=>i.bairro).filter(Boolean))].sort().map(c=>`<option value="${esc(c)}">`).join('');
-  let I=S.imoveis.filter(i=>(!t||i.tipo===t)&&(!s||i.status===s)&&(!f||i.finalidade===f)&&(!rg||i.regiao===rg)&&(!cd||i.condominio===cd)&&(!q||[i.titulo,i.codigo,i.bairro,i.condominio,i.regiao,i.cep,i.endereco,i.obs,i.proprietario].join(' ').toLowerCase().includes(q)));
+  const vmin=+soDig($('iVmin').value)||0,vmax=+soDig($('iVmax').value)||0;
+  let I=S.imoveis.filter(i=>(!vmin||(+i.valor||0)>=vmin)&&(!vmax||(i.valor!=null&&+i.valor<=vmax))&&(!t||i.tipo===t)&&(!s||i.status===s)&&(!f||i.finalidade===f)&&(!rg||i.regiao===rg)&&(!cd||i.condominio===cd)&&(!q||[i.titulo,i.codigo,i.bairro,i.condominio,i.regiao,i.cep,i.endereco,i.obs,i.proprietario].join(' ').toLowerCase().includes(q)));
   if(perto){const R=+$('iRaio').value;I=I.filter(i=>i.lat!=null&&distKm(perto.lat,perto.lng,i.lat,i.lng)<=R).map(i=>({...i,_d:distKm(perto.lat,perto.lng,i.lat,i.lng)})).sort((a,b)=>a._d-b._d)}
   $('iLista').classList.toggle('hide',modoMapa);$('iMapa').classList.toggle('hide',!modoMapa);if(modoMapa)rMapaGeral(I);
   $('iTotal').textContent=S.imoveis.length;$('iDisp').textContent=S.imoveis.filter(i=>i.status==='Disponível').length;
