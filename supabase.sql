@@ -400,3 +400,9 @@ create policy c_del on public.captacoes for delete to authenticated using (publi
 do $$ begin
   begin alter publication supabase_realtime add table public.captacoes; exception when others then null; end;
 end $$;
+-- FOTOS: pasta pública "fotos" no Storage
+insert into storage.buckets (id, name, public) values ('fotos', 'fotos', true) on conflict (id) do update set public = true;
+drop policy if exists "fotos_envio" on storage.objects;
+create policy "fotos_envio" on storage.objects for insert to authenticated with check (bucket_id = 'fotos' and public.is_ativo());
+drop policy if exists "fotos_apagar" on storage.objects;
+create policy "fotos_apagar" on storage.objects for delete to authenticated using (bucket_id = 'fotos' and (owner = auth.uid() or public.is_diretor()));
