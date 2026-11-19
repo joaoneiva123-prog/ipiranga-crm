@@ -525,7 +525,7 @@ $('lgForm').onsubmit=async e=>{e.preventDefault();$('lgMsg').textContent='';$('l
     }else{const{error}=await sb.auth.signInWithPassword({email,password:senha});if(error)throw error}
     await iniciar();
   }catch(err){$('lgMsg').textContent=traduz(err.message)}finally{$('lgBtn').disabled=false}};
-function traduz(m=''){if(/Invalid login/i.test(m))return'E-mail ou senha incorretos.';if(/already registered/i.test(m))return'Esse e-mail já tem conta. Clique em "Já tenho conta".';if(/Email not confirmed/i.test(m))return'Confirme seu e-mail pelo link que enviamos.';if(/at least 6/i.test(m))return'A senha precisa ter pelo menos 6 caracteres.';return m}
+function traduz(m=''){if(/Invalid login/i.test(m))return'E-mail ou senha incorretos.';if(/already registered/i.test(m))return'Esse e-mail já tem conta. Clique em "Já tenho conta".';if(/Email not confirmed/i.test(m))return'Confirme seu e-mail pelo link que enviamos.';if(/at least 6/i.test(m))return'A senha precisa ter pelo menos 6 caracteres.';if(/rate limit/i.test(m))return'Muitos cadastros seguidos. Avise o diretor: ele precisa desligar a confirmação de e-mail no Supabase. Tente de novo em alguns minutos.';return m}
 document.querySelectorAll('[data-sair]').forEach(b=>b.onclick=async()=>{await sb.auth.signOut();location.reload()});
 $('pendCheck').onclick=()=>iniciar();
 
