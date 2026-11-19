@@ -352,3 +352,51 @@ create policy f_sel on public.financeiro for select to authenticated using (
   or (public.is_diretor() and not public.is_master(criado_por))
   or (public.is_ativo() and corretor_id = auth.uid())
   or (public.is_gerente() and public.papel_de(corretor_id) = 'corretor'));
+-- PERFIL SECRETÁRIA + MÓDULO CAPTAÇÃO
+alter table public.profiles drop constraint if exists profiles_papel_check;
+alter table public.profiles add constraint profiles_papel_check check (papel in ('diretor','gerente','secretaria','corretor'));
+
+create or replace function public.is_secretaria() returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce((select ativo and papel = 'secretaria' from public.profiles where id = auth.uid()), false)
+$$;
+grant execute on function public.is_secretaria() to authenticated;
+
+-- secretária vê/cadastra leads dos corretores e do gerente (como o gerente)
+create or replace function public.pode_ver_lead(dono uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_master()
+      or (public.is_ativo() and dono = auth.uid())
+      or (public.is_diretor() and not public.is_master(dono))
+      or (public.is_gerente() and public.papel_de(dono) = 'corretor')
+      or (public.is_secretaria() and public.papel_de(dono) in ('corretor','gerente'))
+$$;
+
+create table if not exists public.captacoes (
+  id uuid primary key default gen_random_uuid(),
+  link text, titulo text, tipo text, valor numeric, bairro text, quartos int, area numeric,
+  proprietario text, tel text, texto text,
+  status text not null default 'novo',
+  data date,
+  notas jsonb not null default '[]'::jsonb,
+  imovel_id uuid references public.imoveis(id) on delete set null,
+  responsavel_id uuid references public.profiles(id) default auth.uid(),
+  criado timestamptz not null default now(),
+  atualizado timestamptz not null default now()
+);
+alter table public.captacoes enable row level security;
+grant select, insert, update, delete on public.captacoes to authenticated;
+drop policy if exists c_all on public.captacoes;
+drop policy if exists c_sel on public.captacoes;
+create policy c_sel on public.captacoes for select to authenticated using (public.is_diretor() or public.is_gerente() or public.is_secretaria());
+drop policy if exists c_ins on public.captacoes;
+create policy c_ins on public.captacoes for insert to authenticated with check (public.is_diretor() or public.is_gerente() or public.is_secretaria());
+drop policy if exists c_upd on public.captacoes;
+create policy c_upd on public.captacoes for update to authenticated
+  using (public.is_diretor() or public.is_gerente() or public.is_secretaria())
+  with check (public.is_diretor() or public.is_gerente() or public.is_secretaria());
+drop policy if exists c_del on public.captacoes;
+create policy c_del on public.captacoes for delete to authenticated using (public.is_diretor() or responsavel_id = auth.uid());
+do $$ begin
+  begin alter publication supabase_realtime add table public.captacoes; exception when others then null; end;
+end $$;

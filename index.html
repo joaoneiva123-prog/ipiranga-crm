@@ -248,6 +248,7 @@ td.num,th.num{text-align:right;white-space:nowrap}
       <button data-v="leads">📋 Leads</button>
       <button data-v="vendas">🏆 Vendas</button>
       <button data-v="imoveis">🏠 Imóveis</button>
+      <button data-v="capt" id="navCap" class="hide">🔍 Captação</button>
       <button data-v="fin" id="navFin">💰 Financeiro</button>
       <button data-v="equipe" id="navEq">👥 Equipe</button>
     </nav>
@@ -260,6 +261,24 @@ td.num,th.num{text-align:right;white-space:nowrap}
 
   <!-- DASHBOARD -->
   <section class="view" id="vDash"><div class="dash" id="dash"></div></section>
+
+  <!-- CAPTAÇÃO -->
+  <section class="view hide" id="vCapt">
+    <div class="toolbar">
+      <button class="btn" id="cNovo">+ Novo anúncio</button>
+      <input class="search" id="cBusca" placeholder="Buscar proprietário, bairro, telefone…">
+      <button class="btn ghost sm" id="cScripts">📝 Ver scripts</button>
+      <div class="stats">
+        <div class="stat"><b id="csNovo">0</b><small>Para abordar</small></div>
+        <div class="stat amber"><b id="csHoje">0</b><small>Retornar hoje</small></div>
+        <div class="stat green"><b id="csAceit">0</b><small>Aceitaram (mês)</small></div>
+        <div class="stat"><b id="csCad">0</b><small>Cadastrados (mês)</small></div>
+        <div class="stat"><b id="csTaxa">0%</b><small>Conversão</small></div>
+      </div>
+    </div>
+    <div class="tabs" id="cTabs"></div>
+    <main class="board" id="cBoard"></main>
+  </section>
 
   <!-- VENDAS -->
   <section class="view hide" id="vVendas"><div class="dash" id="vendas"></div></section>
@@ -452,20 +471,22 @@ const diff=dt=>dt?Math.round((new Date(dt+'T00:00:00')-new Date(hojeISO()+'T00:0
 const fmtD=dt=>{if(!dt)return'';const[y,m,d]=dt.split('-');return d+'/'+m+'/'+y.slice(2)};
 const brl=v=>(Number(v)||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const brlK=v=>{v=Number(v)||0;return Math.abs(v)>=1e6?'R$ '+(v/1e6).toLocaleString('pt-BR',{maximumFractionDigits:2})+' mi':Math.abs(v)>=1e4?'R$ '+(v/1e3).toLocaleString('pt-BR',{maximumFractionDigits:1})+' mil':brl(v)};
-const num=s=>{if(s===''||s==null)return null;s=String(s).replace(/[R$\s]/g,'');if(s.includes(','))s=s.replace(/\./g,'').replace(',','.');const n=parseFloat(s);return isNaN(n)?null:n};
+const num=s=>{if(s===''||s==null)return null;s=String(s).replace(/[R$\s]/g,'');if(s.includes(','))s=s.replace(/\./g,'').replace(',','.');else if(/^\d{1,3}(\.\d{3})+$/.test(s))s=s.replace(/\./g,'');const n=parseFloat(s);return isNaN(n)?null:n};
 const int=s=>s===''||s==null?null:parseInt(s,10);
 const opts=(arr,sel)=>arr.map(o=>typeof o==='string'?`<option ${o===sel?'selected':''}>${esc(o)}</option>`:`<option value="${esc(o.v)}" ${o.v===sel?'selected':''}>${esc(o.t)}</option>`).join('');
 function toast(t){const el=$('toast');el.textContent=t;el.style.display='block';clearTimeout(el._t);el._t=setTimeout(()=>el.style.display='none',2400)}
 function falha(e){console.error(e);toast('Erro: '+(e?.message||'não consegui salvar'))}
 
 /* ================= ESTADO ================= */
-const S={me:null,perfis:[],leads:[],imoveis:[],fin:[],vendas:[],vAno:new Date().getFullYear(),vMes:'',vCor:'',view:'dash',lFiltro:'todos',lBusca:'',lCor:'',fTab:'comissoes'};
+const S={capt:[],cFiltro:'todos',cBusca:'',me:null,perfis:[],leads:[],imoveis:[],fin:[],vendas:[],vAno:new Date().getFullYear(),vMes:'',vCor:'',view:'dash',lFiltro:'todos',lBusca:'',lCor:'',fTab:'comissoes'};
 const isDir=()=>S.me?.papel==='diretor';
 const isGer=()=>S.me?.papel==='gerente';
-const gestor=()=>isDir()||isGer();
+const isSec=()=>S.me?.papel==='secretaria';
+const gestor=()=>isDir()||isGer()||isSec();
+const podeCaptar=()=>isDir()||isGer()||isSec();
 /* quem o usuário enxerga/gerencia: diretor = todos; gerente = ele + corretores; corretor = só ele */
 const isMaster=()=>!!S.me?.master;
-const equipe=()=>isMaster()?ativos():isDir()?ativos().filter(p=>!p.master):isGer()?ativos().filter(p=>p.papel==='corretor'||p.id===S.me.id):ativos().filter(p=>p.id===S.me.id);
+const equipe=()=>isMaster()?ativos():isDir()?ativos().filter(p=>!p.master):isGer()?ativos().filter(p=>p.papel==='corretor'||p.id===S.me.id):isSec()?ativos().filter(p=>['corretor','gerente'].includes(p.papel)||p.id===S.me.id):ativos().filter(p=>p.id===S.me.id);
 const nomeDe=id=>S.perfis.find(p=>p.id===id)?.nome||'—';
 const ativos=()=>S.perfis.filter(p=>p.ativo);
 
@@ -504,32 +525,32 @@ async function iniciar(){
   if(error){tela('scrLogin');$('lgMsg').textContent='Banco ainda não configurado: rode o arquivo supabase.sql no Supabase.';return}
   if(!me||!me.ativo){tela('scrPend');return}
   S.me=me; tela('app');
-  $('meNome').textContent=me.nome; $('mePapel').textContent=me.master?'Diretor geral':({diretor:'Diretor',gerente:'Gerente',corretor:'Corretor'})[me.papel]||'Corretor';
+  $('meNome').textContent=me.nome; $('mePapel').textContent=me.master?'Diretor geral':({diretor:'Diretor',gerente:'Gerente',secretaria:'Secretária',corretor:'Corretor'})[me.papel]||'Corretor';
   $('navEq').classList.toggle('hide',!isDir());
-  $('navFin').textContent=isDir()?'💰 Financeiro':isGer()?'💰 Comissões da equipe':'💰 Minhas comissões';
+  $('navFin').textContent=isDir()?'💰 Financeiro':isGer()?'💰 Comissões da equipe':'💰 Minhas comissões';$('navFin').classList.toggle('hide',isSec());$('navCap').classList.toggle('hide',!podeCaptar());
   $('fNovo').classList.toggle('hide',!isDir());
   $('mlCorBox').classList.toggle('hide',!gestor());
   $('miDel').classList.toggle('hide',!isDir());
   await carregarTudo(); tempoReal(); setInterval(carregarTudo,120000);
 }
 async function carregar(t){
-  const ord={profiles:'nome',leads:'data',imoveis:'criado',financeiro:'vencimento',vendas:'data'}[t];
+  const ord={profiles:'nome',leads:'data',imoveis:'criado',financeiro:'vencimento',vendas:'data',captacoes:'criado'}[t];
   let data=[],de=0;
   while(true){const r=await sb.from(t).select('*').order(ord,{ascending:t!=='imoveis',nullsFirst:false}).order('id').range(de,de+999);
     if(r.error){console.error(r.error);return} data=data.concat(r.data); if(r.data.length<1000)break; de+=1000}
-  ({profiles:()=>S.perfis=data,leads:()=>S.leads=data,imoveis:()=>S.imoveis=data,financeiro:()=>S.fin=data,vendas:()=>S.vendas=data})[t]();
+  ({profiles:()=>S.perfis=data,leads:()=>S.leads=data,imoveis:()=>S.imoveis=data,financeiro:()=>S.fin=data,vendas:()=>S.vendas=data,captacoes:()=>S.capt=data})[t]();
 }
-async function carregarTudo(){await Promise.all(['profiles','leads','imoveis','financeiro','vendas'].map(carregar));render()}
+async function carregarTudo(){await Promise.all(['profiles','leads','imoveis','financeiro','vendas','captacoes'].map(carregar));render()}
 const pend={};
 function tempoReal(){
-  ['leads','imoveis','financeiro','profiles','vendas'].forEach(t=>{
+  ['leads','imoveis','financeiro','profiles','vendas','captacoes'].forEach(t=>{
     sb.channel('rt-'+t).on('postgres_changes',{event:'*',schema:'public',table:t},()=>{
       clearTimeout(pend[t]);pend[t]=setTimeout(async()=>{await carregar(t);render()},400)}).subscribe();
   });
 }
 
 /* ================= NAVEGAÇÃO ================= */
-const VIEWS={dash:'vDash',vendas:'vVendas',leads:'vLeads',imoveis:'vImoveis',fin:'vFin',equipe:'vEquipe'};
+const VIEWS={capt:'vCapt',dash:'vDash',vendas:'vVendas',leads:'vLeads',imoveis:'vImoveis',fin:'vFin',equipe:'vEquipe'};
 function irPara(v){S.view=v;document.querySelectorAll('#nav button').forEach(x=>x.classList.toggle('on',x.dataset.v===v));
   Object.values(VIEWS).forEach(id=>$(id).classList.toggle('hide',id!==VIEWS[v]));render()}
 $('nav').onclick=e=>{const b=e.target.closest('[data-v]');if(b)irPara(b.dataset.v)};
@@ -538,7 +559,7 @@ $('tela').onclick=async()=>{try{document.fullscreenElement?await document.exitFu
 function tick(){const d=new Date();$('hora').textContent=pad(d.getHours())+':'+pad(d.getMinutes());$('data').textContent=d.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long'})}
 let dia=hojeISO();setInterval(()=>{tick();if(hojeISO()!==dia){dia=hojeISO();render()}},15000);tick();
 function render(){if(!S.me)return;
-  if(S.view==='dash')rDash();else if(S.view==='vendas')rVendas();else if(S.view==='leads')rLeads();else if(S.view==='imoveis')rImoveis();else if(S.view==='fin')rFin();else rEquipe()}
+  if(S.view==='capt')rCapt();else if(S.view==='dash')rDash();else if(S.view==='vendas')rVendas();else if(S.view==='leads')rLeads();else if(S.view==='imoveis')rImoveis();else if(S.view==='fin')rFin();else rEquipe()}
 
 /* ================= LEADS ================= */
 function stLead(c){if(FINAIS.includes(c.etapa)||!c.data)return null;const n=diff(c.data);return n<0?'late':n===0?'today':n<=3?'soon':'fut'}
@@ -1012,6 +1033,167 @@ function lancamentosDaVenda(v){const P=partesDaVenda(v);if(P.diretor||!P.total)r
   return L}
 const finDaVenda=v=>S.fin.filter(f=>f.venda_id===v.id||(!f.venda_id&&v.imovel_id&&f.imovel_id===v.imovel_id&&/Comiss|Repasse/.test(f.descricao)&&(f.descricao||'').includes(v.cliente||'§')));
 
+/* ================= CAPTAÇÃO ================= */
+const ETAPAS_CAP=[
+ {id:'novo',nome:'Anúncio novo',ico:'🆕',c:'#3b82f6',d:'Ainda não abordei'},
+ {id:'contatado',nome:'Abordado',ico:'💬',c:'#f59e0b',d:'Mensagem enviada, aguardando'},
+ {id:'aceitou',nome:'Aceitou',ico:'🤝',c:'#22c55e',d:'Topou anunciar com a gente'},
+ {id:'fotos',nome:'Fotos / dados',ico:'📸',c:'#a855f7',d:'Agendar fotos e pegar dados'},
+ {id:'cadastrado',nome:'Cadastrado',ico:'🏠',c:'#16a34a',d:'Virou imóvel da carteira'},
+ {id:'recusou',nome:'Recusou',ico:'✖️',c:'#6b7280',d:'Não quis / já vendeu'}];
+const FIM_CAP=['cadastrado','recusou'];
+const SCRIPTS={
+ abordagem:{nome:'1ª abordagem',txt:`Oi{, NOME}! Tudo bem? 😊
+Aqui é {EU}, da *Ipiranga Gestão Imobiliária*, de Anápolis.
+
+Vi o anúncio {DO_IMOVEL}{ NO_BAIRRO}{ POR_VALOR} e gostei muito do imóvel.
+
+Temos atendido clientes procurando imóveis nessa região e eu gostaria de incluir o seu na nossa carteira para apresentar a eles. 🏡
+
+✅ Você não paga nada para anunciar com a gente
+✅ Seu anúncio na OLX continua normal
+✅ Cuidamos de fotos, divulgação e visitas — você só acompanha
+
+Posso te fazer 3 perguntinhas rápidas sobre o imóvel?`},
+ retomar:{nome:'Retomar (2–3 dias)',txt:`Oi{, NOME}! Passando só pra saber se você viu minha mensagem sobre {O_IMOVEL}{ NO_BAIRRO}. 😊
+
+Quanto mais gente qualificada vendo, mais rápido sai a venda — e a gente leva o seu imóvel até os nossos clientes e corretores sem custo pra você.
+
+Posso te ligar 2 minutinhos hoje ou amanhã?`},
+ ultima:{nome:'Última mensagem',txt:`Oi{, NOME}! Última mensagem pra não te incomodar. 🙏
+
+Se em algum momento quiser mais gente vendo {O_IMOVEL}, é só me chamar aqui que a gente cadastra na hora.
+
+Boas vendas e um ótimo dia!`},
+ aceitou:{nome:'Aceitou → pegar dados',txt:`Que ótimo{, NOME}! 🙌 Seja bem-vindo(a) à Ipiranga.
+
+Pra deixar o seu imóvel pronto, só preciso de:
+1️⃣ Endereço completo ou CEP
+2️⃣ Valor final e se aceita financiamento / permuta
+3️⃣ Um dia e horário pra nossa equipe ir fazer fotos profissionais 📸
+
+Pode me mandar por aqui mesmo?`}};
+function preencherScript(k,c){const tipo=(c.tipo||'imóvel').toLowerCase(),art=/casa|chácara|chacara|sala/.test(tipo)?'a':'o',
+  dados={NOME:(c.proprietario||'').split(' ')[0],EU:S.me.nome.split(' ')[0],
+   DO_IMOVEL:`d${art} ${tipo}`,O_IMOVEL:`${art} ${tipo}`,NO_BAIRRO:c.bairro?`no ${c.bairro}`:'',POR_VALOR:c.valor?`por ${brl(c.valor).replace(',00','')}`:''};
+  return SCRIPTS[k].txt.replace(/\{([^A-Z{}]*)([A-Z_]+)\}/g,(m,pre,key)=>dados[key]?pre+dados[key]:'').replace(/ +\n/g,'\n')}
+function extrairAnuncio(t){t=t||'';const r={};
+  const v=t.match(/R\$\s*([\d.]+(?:,\d{2})?)/);if(v)r.valor=num(v[1]);
+  const q=t.match(/(\d+)\s*(?:quartos?|dormit[óo]rios?|qtos?\b|qts?\b)/i);if(q)r.quartos=+q[1];
+  const a=t.match(/(\d+(?:[.,]\d+)?)\s*m(?:²|2)(?!\d)/i);if(a)r.area=num(a[1]);
+  const tipos=[[/apartamento|apto\b|ap\b|kitnet|studio|flat/i,'Apartamento'],[/sobrado/i,'Sobrado'],[/ch[áa]cara|s[íi]tio/i,'Chácara'],[/lote|terreno/i,'Lote'],[/sala comercial|ponto comercial|loja/i,'Sala comercial'],[/galp[ãa]o/i,'Galpão'],[/condom[íi]nio fechado/i,'Casa em condomínio'],[/casa/i,'Casa']];
+  for(const[re,tp]of tipos)if(re.test(t)){r.tipo=tp;break}
+  const b=t.match(/bairro[:\s-]+([^\n,;|]+)/i)||t.match(/\b((?:setor|jardim|jd\.?|vila|residencial|parque|conjunto|bairro|loteamento|condom[íi]nio)\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ0-9][^\n,;|.()]{2,40})/);if(b)r.bairro=b[1].trim();
+  const tel=t.match(/\(?\b\d{2}\)?\s?9\s?\d{4}[-\s.]?\d{4}\b/);if(tel)r.tel=tel[0];
+  const u=t.match(/https?:\/\/\S+/);if(u)r.link=u[0];
+  const l=t.split('\n').map(x=>x.trim()).find(x=>x&&!/^https?:/.test(x));if(l)r.titulo=l.slice(0,90);
+  return r}
+function duplicadosCap(c,id){const d=soDig(c.tel),lk=(c.link||'').split('?')[0];
+  return S.capt.filter(x=>x.id!==id&&((lk&&(x.link||'').split('?')[0]===lk)||(d.length>=10&&soDig(x.tel)===d)||(c.valor&&x.valor==c.valor&&c.bairro&&x.bairro&&x.bairro.toLowerCase()===c.bairro.toLowerCase())))}
+function stCap(c){if(FIM_CAP.includes(c.status)||!c.data)return null;const n=diff(c.data);return n<0?'late':n===0?'today':'fut'}
+function rCapt(){
+  const q=S.cBusca.trim().toLowerCase(),mes=hojeISO().slice(0,7);
+  const C=S.capt.filter(c=>!q||[c.titulo,c.proprietario,c.tel,c.bairro,c.link,(c.notas||[]).map(n=>n.t).join(' ')].join(' ').toLowerCase().includes(q));
+  const doMes=S.capt.filter(c=>(c.atualizado||c.criado||'').slice(0,7)===mes);
+  const abord=S.capt.filter(c=>c.status!=='novo').length,ok=S.capt.filter(c=>['aceitou','fotos','cadastrado'].includes(c.status)).length;
+  $('csNovo').textContent=S.capt.filter(c=>c.status==='novo').length;$('csHoje').textContent=S.capt.filter(c=>['late','today'].includes(stCap(c))).length;
+  $('csAceit').textContent=doMes.filter(c=>['aceitou','fotos','cadastrado'].includes(c.status)).length;$('csCad').textContent=doMes.filter(c=>c.status==='cadastrado').length;
+  $('csTaxa').textContent=abord?Math.round(ok/abord*100)+'%':'—';
+  $('cTabs').innerHTML=`<button class="tab ${S.cFiltro==='todos'?'on':''}" data-cf="todos">Todas</button>`+ETAPAS_CAP.map(e=>`<button class="tab ${S.cFiltro===e.id?'on':''}" data-cf="${e.id}">${e.ico} ${e.nome}<span class="n">${C.filter(c=>c.status===e.id).length}</span></button>`).join('');
+  const cols=S.cFiltro==='todos'?ETAPAS_CAP:ETAPAS_CAP.filter(e=>e.id===S.cFiltro);
+  $('cBoard').className='board'+(S.cFiltro==='todos'?'':' single');
+  $('cBoard').innerHTML=cols.map(e=>{const cs=C.filter(c=>c.status===e.id).sort((a,b)=>(a.data||'9')<(b.data||'9')?-1:1);
+    return`<section class="col" style="--c:${e.c}" data-cst="${e.id}"><div class="colhead"><span>${e.ico}</span><h3>${e.nome}</h3><span class="cnt">${cs.length}</span></div><div class="coldesc">${e.d}</div>
+     <div class="cards">${cs.map(cardCap).join('')||'<div class="colempty">Arraste um anúncio pra cá</div>'}</div></section>`}).join('')}
+function cardCap(c){const st=stCap(c),n=diff(c.data);
+  const acoes=c.status==='cadastrado'?(c.imovel_id?`<button data-ca="verimo" data-id="${c.id}">🏠 Ver imóvel</button>`:''):c.status==='recusou'?'':
+   ['aceitou','fotos'].includes(c.status)?`<button data-ca="script" data-id="${c.id}" data-tip="Mensagem para pegar os dados">💬 Msg</button><button data-ca="cadastrar" data-id="${c.id}" data-tip="Transformar em imóvel da carteira">🏠 Cadastrar</button>`
+   :`<button data-ca="script" data-id="${c.id}" data-tip="Abordar com o script">💬 Abordar</button><button data-ca="mais3" data-id="${c.id}" data-tip="Sem resposta · retomar em 3 dias">⏰ +3d</button><button data-ca="aceitou" data-id="${c.id}" data-tip="Aceitou anunciar">🤝</button><button data-ca="recusou" data-id="${c.id}" data-tip="Recusou">✖</button>`;
+  return`<div class="card ${st==='late'?'late':st==='today'?'today':''}" draggable="true" data-cap="${c.id}">
+   <div class="nm">${esc(c.titulo||c.tipo||'Anúncio')}</div>
+   <div class="ph">${esc([c.proprietario,c.tel].filter(Boolean).join(' · ')||'Proprietário não informado')}</div>
+   <div class="obs">${esc([c.tipo,c.bairro,c.quartos?c.quartos+' qts':'',c.area?c.area+' m²':''].filter(Boolean).join(' · '))}</div>
+   <div class="meta">${c.valor?`<span class="pill br">${brlK(c.valor)}</span>`:''}${c.data&&!FIM_CAP.includes(c.status)?`<span class="pill ${st==='fut'?'':st}">📅 ${n<0?'Atrasado '+(-n)+'d':n===0?'HOJE':fmtD(c.data).slice(0,5)}</span>`:''}${c.link?`<a class="pill blue" href="${esc(c.link)}" target="_blank" rel="noopener" data-noopen style="text-decoration:none">OLX ↗</a>`:''}${(c.notas||[]).length?`<span class="pill">📝 ${c.notas.length}</span>`:''}</div>
+   ${acoes?`<div class="qa">${acoes}</div>`:''}</div>`}
+$('cTabs').onclick=e=>{const b=e.target.closest('[data-cf]');if(b){S.cFiltro=b.dataset.cf;rCapt()}};
+$('cBusca').oninput=e=>{S.cBusca=e.target.value;rCapt()};
+$('cNovo').onclick=()=>abrirCap(null);
+$('cScripts').onclick=()=>sheet('📝 Scripts de captação',Object.entries(SCRIPTS).map(([k,s])=>`<div class="f"><label>${s.nome}</label><div class="nitem" style="white-space:pre-wrap">${esc(preencherScript(k,{proprietario:'Maria',tipo:'Casa',bairro:'Jundiaí',valor:450000}))}</div></div>`).join(''),null);
+$('cBoard').addEventListener('click',e=>{if(e.target.closest('[data-noopen]'))return;const a=e.target.closest('[data-ca]');
+  if(a){e.stopPropagation();return acaoCap(a.dataset.ca,a.dataset.id)}const c=e.target.closest('[data-cap]');if(c)abrirCap(c.dataset.cap)});
+let dragCap=null;const cb=$('cBoard');
+cb.addEventListener('dragstart',e=>{const c=e.target.closest('[data-cap]');if(c)dragCap=c.dataset.cap});
+cb.addEventListener('dragover',e=>{if(dragCap&&e.target.closest('.col'))e.preventDefault()});
+cb.addEventListener('drop',async e=>{const col=e.target.closest('.col');if(!col||!dragCap)return;e.preventDefault();const id=dragCap;dragCap=null;
+  const st=col.dataset.cst;if(st==='cadastrado')return acaoCap('cadastrar',id);await salvaCap(id,{status:st,...(FIM_CAP.includes(st)?{data:null}:{})})});
+async function salvaCap(id,patch){const c=S.capt.find(x=>x.id===id);if(!c)return false;patch.atualizado=new Date().toISOString();Object.assign(c,patch);rCapt();
+  const{error}=await sb.from('captacoes').update(patch).eq('id',id);if(error){falha(error);await carregar('captacoes');rCapt();return false}return true}
+async function acaoCap(tipo,id){const c=S.capt.find(x=>x.id===id);if(!c)return;
+  if(tipo==='mais3')return salvaCap(id,{data:addDias(3),status:c.status==='novo'?'contatado':c.status,notas:[...(c.notas||[]),nota('⏰ Sem resposta · retomar em 3 dias')]}).then(ok=>ok&&toast('Retomar em 3 dias'));
+  if(tipo==='aceitou')return salvaCap(id,{status:'aceitou',data:addDias(1),notas:[...(c.notas||[]),nota('🤝 Aceitou anunciar com a Ipiranga')]}).then(ok=>{if(ok){toast('🎉 Aceitou!');acaoCap('script',id)}});
+  if(tipo==='recusou'){sheet('✖ Recusou · '+(c.proprietario||c.titulo||''),`<div class="chips" id="qMot">${['Já vendeu','Não quer imobiliária','Sem resposta','Valor fora do mercado','Outro'].map(m=>`<button>${m}</button>`).join('')}</div>`,
+    async()=>{const m=document.querySelector('#qMot .on')?.textContent;if(!m){toast('Escolha o motivo');return false}return salvaCap(id,{status:'recusou',data:null,notas:[...(c.notas||[]),nota('✖ Recusou: '+m)]})},'Confirmar');return}
+  if(tipo==='verimo'){irPara('imoveis');return abrirImo(c.imovel_id)}
+  if(tipo==='cadastrar')return cadastrarDaCaptacao(c);
+  if(tipo==='script'){const pad0=['aceitou','fotos'].includes(c.status)?'aceitou':c.status==='novo'?'abordagem':(c.notas||[]).filter(n=>/Retomar|Sem resposta/.test(n.t)).length>=2?'ultima':'retomar';
+    const temTel=soDig(c.tel).length>=10;
+    sheet('💬 Mensagem · '+(c.proprietario||c.titulo||'proprietário'),`<div class="chips" id="scK">${Object.entries(SCRIPTS).map(([k,s])=>`<button data-k="${k}" class="${k===pad0?'on':''}">${s.nome}</button>`).join('')}</div>
+      <textarea id="scTxt" style="width:100%;min-height:260px;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:10px 12px">${esc(preencherScript(pad0,c))}</textarea>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">${temTel?`<a class="btnwa" id="scWa" style="flex:1" href="#" target="_blank" rel="noopener">💬 Enviar no WhatsApp</a>`:''}<button class="btn ghost" id="scCopy" style="flex:1">📋 Copiar (chat da OLX)</button></div>
+      ${temTel?'':'<p style="color:var(--muted);font-size:12.5px;margin:8px 0 0">Sem telefone: copie e cole no chat da OLX. Quando o proprietário passar o número, salve no anúncio.</p>'}`,null);
+    const upd=()=>{if($('scWa'))$('scWa').href=waLink(c.tel,$('scTxt').value)};upd();$('scTxt').oninput=upd;
+    $('scK').onclick=e=>{const b=e.target.closest('[data-k]');if(!b)return;$('scK').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));$('scTxt').value=preencherScript(b.dataset.k,c);upd()};
+    const enviado=async()=>{const k=$('scK').querySelector('.on')?.dataset.k;fecharOv();
+      await salvaCap(id,{status:c.status==='novo'?'contatado':c.status,data:addDias(k==='ultima'?7:k==='aceitou'?1:3),notas:[...(c.notas||[]),nota('💬 Enviado: '+SCRIPTS[k].nome)]});toast('Registrado ✓ · retorno agendado')};
+    if($('scWa'))$('scWa').addEventListener('click',()=>setTimeout(enviado,300));
+    $('scCopy').onclick=async()=>{try{await navigator.clipboard.writeText($('scTxt').value);toast('Copiado! Cole no chat da OLX')}catch(e){$('scTxt').select();toast('Selecionado: Ctrl+C para copiar')}setTimeout(enviado,400)};
+  }}
+let capId=null,capNotas=[];
+function abrirCap(id){const c=id?S.capt.find(x=>x.id===id):null;capId=c?.id||null;capNotas=[...(c?.notas||[])];
+  const v=(k)=>esc(c?.[k]??'');
+  sheet(c?'🔍 Anúncio captado':'🔍 Novo anúncio',`
+   ${c?'':`<div class="f"><label>Cole aqui o texto do anúncio (título, descrição, preço…)</label><textarea id="cpTexto" style="width:100%;min-height:110px;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:10px 12px" placeholder="No anúncio da OLX: selecione tudo (Ctrl+A), copie (Ctrl+C) e cole aqui. Os campos abaixo se preenchem sozinhos."></textarea></div>`}
+   <div class="f"><label>Link do anúncio</label><input id="cpLink" value="${v('link')}" placeholder="https://www.olx.com.br/..."></div>
+   <div id="cpDup"></div>
+   <div class="f"><label>Título</label><input id="cpTit" value="${v('titulo')}"></div>
+   <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px">
+    <div class="f"><label>Proprietário</label><input id="cpProp" value="${v('proprietario')}"></div>
+    <div class="f"><label>Telefone / WhatsApp</label><input id="cpTel" value="${v('tel')}" inputmode="tel"></div>
+    <div class="f"><label>Tipo</label><select id="cpTipo"><option value="">—</option>${opts(TIPOS,c?.tipo||'')}</select></div>
+    <div class="f"><label>Valor (R$)</label><input id="cpVal" value="${v('valor')}" inputmode="decimal"></div>
+    <div class="f"><label>Bairro / condomínio</label><input id="cpBairro" value="${v('bairro')}" list="dlBairro"></div>
+    <div class="f"><label>Quartos · Área m²</label><div style="display:flex;gap:6px"><input id="cpQ" value="${v('quartos')}" type="number" min="0"><input id="cpA" value="${v('area')}" inputmode="decimal"></div></div>
+    <div class="f"><label>Etapa</label><select id="cpSt">${ETAPAS_CAP.map(e=>`<option value="${e.id}" ${e.id===(c?.status||'novo')?'selected':''}>${e.ico} ${e.nome}</option>`).join('')}</select></div>
+    <div class="f"><label>Retomar em</label><input type="date" id="cpData" value="${v('data')}"></div>
+   </div>
+   <div class="notes" style="border:0;padding:0"><h4>Histórico</h4><div id="cpNotas">${capNotas.length?capNotas.map(n=>`<div class="nitem">${esc(n.t)}<small>${new Date(n.em).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}${n.por?' · '+esc(n.por):''}</small></div>`).join(''):'<div style="color:#777;font-size:13px">Sem histórico ainda.</div>'}</div>
+     <div class="nadd" style="margin-top:6px"><textarea id="cpNota" placeholder="Anotação (ex.: proprietário pediu para ligar à noite)"></textarea></div></div>
+   ${c&&(isDir()||c.responsavel_id===S.me.id)?`<button class="btn danger sm" id="cpDel" type="button">Excluir anúncio</button>`:''}`,salvarCap,c?'Salvar':'Adicionar');
+  const preenche=()=>{const r=extrairAnuncio(($('cpTexto')?.value||'')+'\n'+$('cpLink').value);
+    if(r.link&&!$('cpLink').value)$('cpLink').value=r.link;if(r.titulo&&!$('cpTit').value)$('cpTit').value=r.titulo;if(r.tel&&!$('cpTel').value)$('cpTel').value=r.tel;
+    if(r.tipo&&!$('cpTipo').value)$('cpTipo').value=r.tipo;if(r.valor&&!$('cpVal').value)$('cpVal').value=r.valor;if(r.bairro&&!$('cpBairro').value)$('cpBairro').value=r.bairro;
+    if(r.quartos&&!$('cpQ').value)$('cpQ').value=r.quartos;if(r.area&&!$('cpA').value)$('cpA').value=r.area;dup()};
+  const dup=()=>{const d=duplicadosCap({link:$('cpLink').value,tel:$('cpTel').value,valor:num($('cpVal').value),bairro:$('cpBairro').value},capId);
+    $('cpDup').innerHTML=d.length?`<div class="aviso" style="margin:0 0 10px">⚠️ <b>Possível repetido:</b> ${d.slice(0,3).map(x=>`${esc(x.titulo||x.proprietario||'anúncio')} (${ETAPAS_CAP.find(e=>e.id===x.status)?.nome})`).join(' · ')}</div>`:''};
+  if($('cpTexto'))$('cpTexto').addEventListener('input',preenche);['cpLink','cpTel','cpVal','cpBairro'].forEach(i=>$(i).addEventListener('change',dup));dup();
+  if($('cpDel'))$('cpDel').onclick=async()=>{const{error}=await sb.from('captacoes').delete().eq('id',capId);if(error)return falha(error);fecharOv();toast('Anúncio excluído');await carregar('captacoes');rCapt()};
+  setTimeout(()=>($('cpTexto')||$('cpTit')).focus(),60)}
+async function salvarCap(){const n=$('cpNota').value.trim();if(n)capNotas.push(nota(n));
+  const row={link:$('cpLink').value.trim()||null,titulo:$('cpTit').value.trim()||null,proprietario:$('cpProp').value.trim()||null,tel:$('cpTel').value.trim()||null,
+    tipo:$('cpTipo').value||null,valor:num($('cpVal').value),bairro:$('cpBairro').value.trim()||null,quartos:int($('cpQ').value),area:num($('cpA').value),
+    status:$('cpSt').value,data:$('cpData').value||null,notas:capNotas,atualizado:new Date().toISOString()};
+  if(!capId&&$('cpTexto')?.value.trim())row.texto=$('cpTexto').value.trim().slice(0,5000);
+  if(!row.titulo&&!row.link&&!row.tel){toast('Cole o anúncio ou preencha título/link');return false}
+  if(row.status==='cadastrado'&&!S.capt.find(x=>x.id===capId)?.imovel_id)row.status='fotos';
+  const{error}=capId?await sb.from('captacoes').update(row).eq('id',capId):await sb.from('captacoes').insert(row);
+  if(error){falha(error);return false}toast('Salvo ✓');await carregar('captacoes');rCapt();return true}
+async function cadastrarDaCaptacao(c){
+  const row={titulo:c.titulo||`${c.tipo||'Imóvel'}${c.bairro?' – '+c.bairro:''}`,tipo:c.tipo||'Casa',finalidade:'Venda',bairro:c.bairro,valor:c.valor,quartos:c.quartos,area:c.area,
+    status:'Disponível',proprietario:c.proprietario,tel_proprietario:c.tel,descricao:c.texto||null,obs:`Captado ${c.link?'na OLX: '+c.link:'por prospecção'} · ${fmtD(hojeISO())} por ${S.me.nome.split(' ')[0]}`};
+  const{data,error}=await sb.from('imoveis').insert(row).select();if(error)return falha(error);const imo=data&&data[0];
+  await salvaCap(c.id,{status:'cadastrado',imovel_id:imo?.id||null,data:null,notas:[...(c.notas||[]),nota('🏠 Cadastrado na carteira')]});
+  toast('🏠 Imóvel cadastrado! Complete CEP, fotos e dados');await carregar('imoveis');if(imo){irPara('imoveis');abrirImo(imo.id)}}
+
 /* ================= VENDAS ================= */
 const vendaDoLead=id=>S.vendas.find(v=>v.lead_id===id);
 const nomeImovel=i=>i?((i.codigo?i.codigo+' · ':'')+i.titulo):'';
@@ -1082,7 +1264,7 @@ async function cancelarVenda(){const v=vdCtx.venda;if(!v)return;
 
 function vendasFiltradas(){return S.vendas.filter(v=>(v.data||'').startsWith(String(S.vAno))&&(!S.vMes||(v.data||'').slice(5,7)===S.vMes)&&(!S.vCor||v.corretor_id===S.vCor))}
 function rVendas(){
-  const V=vendasFiltradas(),verCom=true,anos=[...new Set([new Date().getFullYear(),...S.vendas.map(v=>+(v.data||'').slice(0,4)).filter(Boolean)])].sort((a,b)=>b-a);
+  const V=vendasFiltradas(),verCom=!isSec(),anos=[...new Set([new Date().getFullYear(),...S.vendas.map(v=>+(v.data||'').slice(0,4)).filter(Boolean)])].sort((a,b)=>b-a);
   const tot=V.reduce((s,v)=>s+(+v.valor||0),0),souCor=!isDir();
   const com=V.reduce((s,v)=>s+(souCor?minhaParte(v):(+v.comissao||0)),0);
   const ipi=V.reduce((s,v)=>s+(+v.comissao_ipiranga||0),0);
@@ -1131,7 +1313,7 @@ $('vendas').addEventListener('click',e=>{const t=e.target;
   const c=t.closest('[data-vcor]');if(c&&gestor()){S.vCor=S.vCor===c.dataset.vcor?'':c.dataset.vcor;return rVendas()}
   const g=t.closest('[data-regv]');if(g)return abrirVenda({lead:S.leads.find(l=>l.id===g.dataset.regv)})});
 $('vendas').addEventListener('change',e=>{const id=e.target.id;if(id==='vAno')S.vAno=+e.target.value;if(id==='vMes')S.vMes=e.target.value;if(id==='vCor')S.vCor=e.target.value;rVendas()});
-function baixarCsv(){const V=vendasFiltradas(),verCom=true,q=s=>'"'+String(s??'').replace(/"/g,'""')+'"',nb=n=>n==null?'':String(n).replace('.',',');
+function baixarCsv(){const V=vendasFiltradas(),verCom=!isSec(),q=s=>'"'+String(s??'').replace(/"/g,'""')+'"',nb=n=>n==null?'':String(n).replace('.',',');
   const dir=isDir(),head=['Data','Mês','Cliente','Unidade','Bairro','Corretor','Tipo','Valor',...(verCom?['Comissão %','Comissão total','Parte corretor','% corretor',...(dir?['Parte gerente','Ipiranga']:[]),...(isGer()?['Parte gestão','Para você']:[])]:[]),'Observações'];
   const linhas=V.sort((a,b)=>a.data<b.data?-1:1).map(v=>{const i=S.imoveis.find(x=>x.id===v.imovel_id);
     return[fmtD(v.data),(v.data||'').slice(0,7),v.cliente,i?nomeImovel(i):v.imovel_desc,i?.bairro,nomeDe(v.corretor_id),v.tipo,nb(v.valor),...(verCom?[nb(v.comissao_pct),nb(v.comissao),v.comissao_diretor?'diretor':nb(v.comissao_corretor),nb(v.pct_corretor),...(dir?[nb(v.comissao_gerente),v.comissao_diretor?'—':nb(v.comissao_ipiranga)]:[]),...(isGer()?[nb(v.comissao_gerente),nb(Math.round(minhaParte(v)*100)/100)]:[])]:[]),v.obs].map(q).join(';')});
@@ -1176,7 +1358,7 @@ function rEquipe(){if(!isDir())return;const P=[...S.perfis].sort((a,b)=>(a.ativo
    const nl=S.leads.filter(l=>l.corretor_id===p.id&&!FINAIS.includes(l.etapa)).length;
    return`<tr><td><b>${esc(p.nome)}</b>${eu?' <span class="pill br">você</span>':''}</td><td class="hidem">${esc(p.email||'')}</td><td><input class="sel" data-wa="${p.id}" value="${esc(p.whatsapp||'')}" placeholder="(62) 9…" style="padding:6px 8px;width:150px"></td>
    <td>${p.papel==='diretor'?'<span style="color:var(--muted)">—</span>':`<label class="chk" style="margin:0"><input type="checkbox" data-creci="${p.id}" ${p.creci_definitivo?'checked':''}> ${pctCorretor(p)}%</label>`}</td>
-   <td>${eu||(p.papel==='diretor'&&!isMaster())?(p.master?'Diretor geral':'Diretor'):`<select class="sel" data-papel="${p.id}" style="padding:6px 8px">${opts([{v:'corretor',t:'Corretor'},{v:'gerente',t:'Gerente'},{v:'diretor',t:'Diretor'}],p.papel)}</select>`}</td>
+   <td>${eu||(p.papel==='diretor'&&!isMaster())?(p.master?'Diretor geral':'Diretor'):`<select class="sel" data-papel="${p.id}" style="padding:6px 8px">${opts([{v:'corretor',t:'Corretor'},{v:'gerente',t:'Gerente'},{v:'secretaria',t:'Secretária'},{v:'diretor',t:'Diretor'}],p.papel)}</select>`}</td>
    <td>${eu||(p.papel==='diretor'&&p.ativo&&!isMaster())?'<span class="pill green">Liberado</span>':p.ativo?`<button class="btn ghost sm" data-ativo="${p.id}" data-val="0">Bloquear</button>`:`<button class="btn sm" data-ativo="${p.id}" data-val="1">✓ Liberar acesso</button>`}</td>
    <td class="num hidem">${nl}</td></tr>`}).join('')}</tbody></table>`}
 $('eList').onclick=async e=>{const b=e.target.closest('[data-ativo]');if(!b)return;const{error}=await sb.from('profiles').update({ativo:b.dataset.val==='1'}).eq('id',b.dataset.ativo);
