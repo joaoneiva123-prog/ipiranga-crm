@@ -811,7 +811,22 @@ $('fMes').value=hojeISO().slice(0,7);
 $('fTabs').onclick=e=>{const b=e.target.closest('[data-t]');if(b){S.fTab=b.dataset.t;rFin()}};
 function aberto(f){return!f.pago}
 function vencido(f){return!f.pago&&f.vencimento&&diff(f.vencimento)<0}
-function rFin(){rFin0();if(gestor()&&S.fTab==='comissoes')$('fList').innerHTML=htmlComissoes($('fMes').value,$('fCorretor').value)}
+function rFin(){rFin0();if(S.fTab==='comissoes')$('fList').innerHTML=gestor()?htmlComissoes($('fMes').value,$('fCorretor').value):htmlMinhasVendas($('fMes').value)}
+function htmlMinhasVendas(mes){
+  const V=S.vendas.filter(v=>v.corretor_id===S.me.id&&(!mes||(v.data||'').startsWith(mes))).sort((a,b)=>a.data<b.data?-1:1);
+  if(!V.length)return'<div class="empty">Você não tem vendas neste mês. Bora pra cima! 🚀</div>';
+  let tot=0,minha=0;
+  const linhas=V.map(v=>{const P=partesDaVenda(v),i=S.imoveis.find(x=>x.id===v.imovel_id),L=finDaVenda(v).filter(f=>f.corretor_id===S.me.id);
+    const parte=P.diretor?P.total:(P.mesmo?P.corr+P.ger:P.corr),pct=P.diretor?100:(P.mesmo?Math.round((P.pctCorr+P.pctGer)*10)/10:P.pctCorr);tot+=+v.valor||0;minha+=parte;
+    return`<tr><td>${fmtD(v.data)}</td><td><b>${esc(v.cliente||'—')}</b><br><small style="color:var(--muted)">${esc(i?nomeImovel(i):v.imovel_desc||'')}</small></td>
+     <td class="num">${brl(v.valor)}</td><td class="num">${brl(P.total)}<br><small style="color:var(--muted)">${fmtPct(+v.comissao_pct||0)}</small></td>
+     <td class="num"><span class="pill" style="background:#16a34a;color:#fff">${fmtPct(pct)}</span><br><b style="color:#86efac">${brl(parte)}</b></td>
+     <td>${L.length?(L.every(f=>f.pago)?'<span class="pill green">Recebido</span>':'<span class="pill amber">A receber</span>'):'<span class="pill">Aguardando lançamento</span>'}</td></tr>`}).join('');
+  return`<div class="kpis" style="margin-bottom:12px">
+    <div class="kpi" style="--k:#3b82f6"><small>Minhas vendas no mês</small><b>${V.length}</b><span>${brlK(tot)} em VGV</span></div>
+    <div class="kpi" style="--k:#16a34a"><small>Minha comissão no mês</small><b style="color:#86efac">${brlK(minha)}</b><span>sua parte das vendas</span></div></div>
+   <table><thead><tr><th>Data</th><th>Venda</th><th class="num">Valor</th><th class="num">Comissão total</th><th class="num">Minha parte</th><th>Situação</th></tr></thead>
+   <tbody>${linhas}<tr><td colspan="4" style="text-align:right;color:var(--muted)">Total do mês</td><td class="num"><b style="color:#86efac">${brl(minha)}</b></td><td></td></tr></tbody></table>`}
 function htmlComissoes(mes,cor){
   const V=S.vendas.filter(v=>(!mes||(v.data||'').startsWith(mes))&&(!cor||v.corretor_id===cor)&&+v.comissao).sort((a,b)=>a.data<b.data?-1:1);
   if(!V.length)return'<div class="empty">Nenhuma venda com comissão neste mês.</div>';
@@ -854,7 +869,7 @@ function rFin0(){const FIN=isGer()?FIN.filter(f=>equipe().some(p=>p.id===f.corre
   if(isDir()){$('fTabs').innerHTML=[['comissoes','🧮 Divisão das comissões'],['receber','⬇️ A receber'],['pagar','⬆️ A pagar'],['todos','Tudo']].map(([t,n])=>`<button class="tab ${S.fTab===t?'on':''}" data-t="${t}">${n}<span class="n">${t==='comissoes'?S.vendas.filter(v=>(v.data||'').startsWith(mes)&&+v.comissao).length:F.filter(f=>(t==='todos'||f.tipo===t)&&(sit==='todos'||(sit==='pagos'?f.pago:!f.pago))).length}</span></button>`).join('');
     F=F.filter(f=>S.fTab==='todos'||f.tipo===S.fTab)}
   else if(isGer()){if(!['comissoes','todos'].includes(S.fTab))S.fTab='comissoes';$('fTabs').innerHTML=[['comissoes','🧮 Divisão das comissões'],['todos','Repasses da equipe']].map(([t,n])=>`<button class="tab ${S.fTab===t?'on':''}" data-t="${t}">${n}</button>`).join('')}
-  else $('fTabs').innerHTML='';
+  else{if(!['comissoes','todos'].includes(S.fTab))S.fTab='comissoes';$('fTabs').innerHTML=[['comissoes','🏆 Minhas vendas'],['todos','💵 Meus repasses']].map(([t,n])=>`<button class="tab ${S.fTab===t?'on':''}" data-t="${t}">${n}</button>`).join('')}
   F=F.filter(f=>sit==='todos'||(sit==='pagos'?f.pago:!f.pago)).sort((a,b)=>(a.vencimento||'9')<(b.vencimento||'9')?-1:1);
   const tot=F.reduce((s,f)=>s+(f.tipo==='pagar'&&isDir()&&S.fTab==='todos'?-1:1)*(+f.valor||0),0);
   $('fList').innerHTML=F.length?`<table><thead><tr><th>Vencimento</th><th>Descrição</th><th class="hidem">Categoria</th>${gestor()?'<th class="hidem">Corretor</th>':''}<th class="num">Valor</th><th>Situação</th>${isDir()?'<th></th>':''}</tr></thead><tbody>
