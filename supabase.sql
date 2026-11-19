@@ -342,3 +342,6 @@ alter table public.vendas add column if not exists comissao_gerente numeric;
 alter table public.vendas add column if not exists gerente_id uuid references public.profiles(id);
 alter table public.vendas add column if not exists comissao_ipiranga numeric;
 alter table public.vendas add column if not exists comissao_diretor boolean not null default false;
+
+-- ---------- LIGA LANÇAMENTOS À VENDA ----------
+alter table public.financeiro add column if not exists venda_id uuid references public.vendas(id) on delete set null;
