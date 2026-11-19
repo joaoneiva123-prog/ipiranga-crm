@@ -205,3 +205,11 @@ create policy l_del on public.leads for delete to authenticated using (
 drop policy if exists f_sel on public.financeiro;
 create policy f_sel on public.financeiro for select to authenticated using (
   public.is_diretor() or (public.is_ativo() and corretor_id = auth.uid() and not public.is_gerente()));
+
+-- ---------- WHATSAPP DOS USUÁRIOS ----------
+alter table public.profiles add column if not exists whatsapp text;
+create or replace function public.set_meu_whatsapp(numero text) returns void
+language sql security definer set search_path = public as $$
+  update public.profiles set whatsapp = numero where id = auth.uid()
+$$;
+grant execute on function public.set_meu_whatsapp(text) to authenticated;

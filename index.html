@@ -132,6 +132,15 @@ nav button.on{background:#3a2a20;color:var(--text)}
 .tip{position:fixed;pointer-events:none;background:#111;border:1px solid #444;border-radius:8px;padding:7px 10px;font-size:12.5px;z-index:30;display:none;max-width:260px}
 header .brand{cursor:pointer}
 @media (max-width:900px){.kpis{grid-template-columns:1fr 1fr}.kpi b{font-size:24px}.kpi small{font-size:11px;padding-right:22px}.box,.box.w7,.box.w5{grid-column:1/-1}.dash{padding:12px 14px}.hb{grid-template-columns:120px 1fr 46px}}
+/* ações rápidas */
+.qa{display:flex;gap:5px;margin-top:9px}
+.qa button,.qa a{flex:1;background:#3b3b3b;border:0;border-radius:7px;padding:6px 0;font-size:12.5px;font-weight:700;color:var(--text);text-align:center;text-decoration:none;white-space:nowrap}
+.qa button:hover{background:var(--brand)}.qa a{background:#14532d;color:#bbf7d0;flex:0 0 34px}.qa button[data-qa="perdido"]{flex:0 0 30px}.qa a:hover{background:#166534}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 12px}.chips button{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:7px 12px;font-size:13px}
+.chips button.on{border-color:var(--brand);background:#3a2a20}
+.aviso{background:#3a2a20;border:1px solid #5b3320;border-radius:12px;padding:12px 14px;margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:14px}
+.aviso input{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:9px 12px;width:200px}
+.btnwa{display:inline-block;background:#16a34a;color:#fff;border-radius:10px;padding:12px 18px;font-weight:800;text-decoration:none;text-align:center}
 /* lists */
 .scroll{flex:1;overflow:auto;padding:0 22px 22px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px}
@@ -365,6 +374,14 @@ td.num,th.num{text-align:right;white-space:nowrap}
   </div>
 </div></div>
 
+<!-- ============ MODAL RÁPIDO ============ -->
+<div class="ov" id="ovQ"><div class="modal" style="width:min(480px,100%)">
+  <div class="mhead"><h2 id="qTitle"></h2><button class="x" data-close>×</button></div>
+  <div style="padding:6px 22px 14px" id="qBody"></div>
+  <div class="mfoot"><button class="btn danger hide" data-del></button><span class="confirm" data-conf><button data-yes></button><button data-no></button></span>
+    <span class="sp"></span><button class="btn ghost" data-close id="qCancel">Cancelar</button><button class="btn" id="qOk">Confirmar</button></div>
+</div></div>
+
 <div class="toast" id="toast"></div>
 <div class="tip" id="tip"></div>
 
@@ -508,11 +525,12 @@ function rLeads(){
 function cardLead(c){const st=stLead(c);const ult=(c.notas||[]).slice(-1)[0];const obs=c.busca||ult?.t||'';const im=S.imoveis.find(i=>i.id===c.imovel_id);
   return`<div class="card ${st==='late'?'late':st==='today'?'today':''}" draggable="true" data-lead="${c.id}"><div class="nm">${esc(c.nome)}</div>
   <div class="ph">${esc([c.tel,c.origem].filter(Boolean).join(' · '))}</div>${obs?`<div class="obs">${esc(obs)}</div>`:''}
-  <div class="meta">${c.data&&!FINAIS.includes(c.etapa)?`<span class="pill ${st==='fut'?'':st}">📅 ${esc(rotLead(c))}</span>`:''}${im?`<span class="pill br">🏠 ${esc(im.codigo||im.titulo).slice(0,22)}</span>`:''}${(c.notas||[]).length?`<span class="pill">📝 ${c.notas.length}</span>`:''}${gestor()?`<span class="pill blue">👤 ${esc(nomeDe(c.corretor_id).split(' ')[0])}</span>`:''}</div></div>`}
+  <div class="meta">${c.data&&!FINAIS.includes(c.etapa)?`<span class="pill ${st==='fut'?'':st}">📅 ${esc(rotLead(c))}</span>`:''}${im?`<span class="pill br">🏠 ${esc(im.codigo||im.titulo).slice(0,22)}</span>`:''}${(c.notas||[]).length?`<span class="pill">📝 ${c.notas.length}</span>`:''}${gestor()?`<span class="pill blue">👤 ${esc(nomeDe(c.corretor_id).split(' ')[0])}</span>`:''}</div>${FINAIS.includes(c.etapa)?'':`<div class="qa"><button data-qa="sem" data-id="${c.id}" data-tip="Liguei e não atendeu · reagenda +2 dias">📵 +2d</button><button data-qa="visita" data-id="${c.id}" data-tip="Marcar visita">🏠 Visita</button><button data-qa="colar" data-id="${c.id}" data-tip="Colar conversa do WhatsApp nas observações">📋 Colar</button>${waLink(c.tel)?`<a data-qa="wa" href="${waLink(c.tel)}" target="_blank" rel="noopener" data-tip="Abrir conversa com o cliente">💬</a>`:''}<button data-qa="perdido" data-id="${c.id}" data-tip="Marcar como perdido">✖</button></div>`}</div>`}
 $('lTabs').onclick=e=>{const b=e.target.closest('[data-f]');if(b){S.lFiltro=b.dataset.f;rLeads()}};
 $('lBusca').oninput=e=>{S.lBusca=e.target.value;rLeads()};
 $('lCorretor').onchange=e=>{S.lCor=e.target.value;rLeads()};
-document.addEventListener('click',e=>{const c=e.target.closest('[data-lead]');if(c&&!e.target.closest('.modal'))abrirLead(c.dataset.lead)});
+document.addEventListener('click',e=>{if(e.target.closest('[data-qa]'))return;const c=e.target.closest('[data-lead]');if(c&&!e.target.closest('.modal'))abrirLead(c.dataset.lead)});
+document.addEventListener('click',e=>{const b=e.target.closest('[data-qa]');if(!b||b.dataset.qa==='wa')return;e.preventDefault();acaoRapida(b.dataset.qa,b.dataset.id)});
 let dragId=null;const bd=$('board');
 bd.addEventListener('dragstart',e=>{const c=e.target.closest('.card');if(c){dragId=c.dataset.lead;e.dataTransfer.effectAllowed='move'}});
 bd.addEventListener('dragend',()=>{document.querySelectorAll('.drop').forEach(x=>x.classList.remove('drop'))});
@@ -545,9 +563,54 @@ $('mlSave').onclick=async()=>{const nome=$('mlNome').value.trim();if(!nome){$('m
   const row={nome,tel:$('mlTel').value.trim(),etapa:$('mlEtapa').value,origem:$('mlOrigem').value||null,data:$('mlData').value||null,hora:$('mlHora').value||null,
     busca:$('mlBusca').value.trim()||null,notas:mlNotas,imovel_id:$('mlImovel').value||null,atualizado:new Date().toISOString()};
   if(gestor())row.corretor_id=$('mlCorretor').value;else if(!mlId)row.corretor_id=S.me.id;
+  const antes=mlId?S.leads.find(x=>x.id===mlId)?.corretor_id:null;
   const q=mlId?sb.from('leads').update(row).eq('id',mlId):sb.from('leads').insert(row);
-  const{error}=await q;if(error)return falha(error);fecharOv();toast('Lead salvo ✓');await carregar('leads');render()};
+  const{error}=await q;if(error)return falha(error);fecharOv();toast('Lead salvo ✓');await carregar('leads');render();
+  const dono=row.corretor_id||antes;if(dono&&dono!==S.me.id&&dono!==antes)avisarCorretor({...row,corretor_id:dono})};
 delHandler('ovLead',async()=>{const{error}=await sb.from('leads').delete().eq('id',mlId);if(error)return falha(error);await carregar('leads');render();toast('Lead excluído')});
+
+/* ================= AÇÕES RÁPIDAS + WHATSAPP ================= */
+const APP_URL=location.origin+location.pathname;
+function soDig(t){return String(t||'').replace(/\D/g,'')}
+function waLink(tel,msg){const d=soDig(tel);if(d.length<10)return'';const n=d.length<=11?'55'+d:d;return'https://wa.me/'+n+(msg?'?text='+encodeURIComponent(msg):'')}
+const nota=t=>({t,em:Date.now(),por:S.me.nome.split(' ')[0]});
+async function atualizaLead(id,patch){const c=S.leads.find(x=>x.id===id);if(!c)return;
+  patch.atualizado=new Date().toISOString();Object.assign(c,patch);render();
+  const{error}=await sb.from('leads').update(patch).eq('id',id);if(error){falha(error);await carregar('leads');render();return false}return true}
+let qOk=null;
+function sheet(titulo,html,ok,txtOk='Confirmar'){$('qTitle').textContent=titulo;$('qBody').innerHTML=html;$('qOk').textContent=txtOk;$('qOk').classList.toggle('hide',!ok);
+  $('qCancel').textContent=ok?'Cancelar':'Fechar';qOk=ok;abrirOv('ovQ',false)}
+$('qOk').onclick=async()=>{if(qOk&&(await qOk())!==false)fecharOv()};
+$('qBody').addEventListener('click',e=>{const b=e.target.closest('.chips button');if(!b)return;
+  b.parentElement.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+  if(b.dataset.d!=null)$('qData').value=addDias(+b.dataset.d)});
+async function acaoRapida(tipo,id){const c=S.leads.find(x=>x.id===id);if(!c)return;
+  if(tipo==='sem'){const d=addDias(2);await atualizaLead(id,{data:d,etapa:['novo','repescagem'].includes(c.etapa)?'ligar':c.etapa,notas:[...(c.notas||[]),nota('📵 Liguei, não atendeu')]})&&toast(`${c.nome}: tentar de novo em ${fmtD(d).slice(0,5)}`);return}
+  if(tipo==='visita'){
+    sheet('🏠 Marcar visita · '+c.nome,`<div class="f"><label>Quando</label><div class="chips"><button data-d="0">Hoje</button><button data-d="1" class="on">Amanhã</button><button data-d="2">Depois de amanhã</button></div>
+      <input type="date" id="qData" value="${addDias(1)}"></div><div class="f"><label>Horário</label><input type="time" id="qHora" value="${c.hora||'10:00'}"></div>
+      <div class="f"><label>Imóvel</label><select id="qImo"><option value="">— escolher depois —</option>${opts(S.imoveis.filter(i=>i.status==='Disponível').map(i=>({v:i.id,t:(i.codigo?i.codigo+' · ':'')+i.titulo})),c.imovel_id||'')}</select></div>`,
+      async()=>{const d=$('qData').value,hr=$('qHora').value,im=$('qImo').value||null;if(!d){toast('Escolha a data');return false}
+        const imo=S.imoveis.find(i=>i.id===im);
+        return atualizaLead(id,{etapa:'visita',data:d,hora:hr||null,imovel_id:im||c.imovel_id||null,notas:[...(c.notas||[]),nota(`🏠 Visita marcada ${fmtD(d).slice(0,5)}${hr?' às '+hr:''}${imo?' · '+(imo.codigo||imo.titulo):''}`)]}).then(ok=>{ok&&toast('Visita marcada ✓');return ok})},'Marcar visita');return}
+  if(tipo==='colar'){
+    sheet('📋 Colar conversa · '+c.nome,`<p style="color:var(--muted);font-size:13px;margin:0 0 8px">No WhatsApp, segure a mensagem → <b>Copiar</b> (dá para selecionar várias). Depois cole aqui.</p>
+      <textarea id="qTxt" style="width:100%;min-height:180px;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:10px 12px" placeholder="Cole aqui a conversa ou escreva uma anotação"></textarea>`,
+      async()=>{const t=$('qTxt').value.trim();if(!t){toast('Cole a conversa primeiro');return false}
+        return atualizaLead(id,{notas:[...(c.notas||[]),nota('💬 '+t)]}).then(ok=>{ok&&toast('Anotação salva ✓');return ok})},'Salvar no lead');
+    setTimeout(async()=>{$('qTxt').focus();try{const t=await navigator.clipboard.readText();if(t&&!$('qTxt').value)$('qTxt').value=t}catch(e){}},80);return}
+  if(tipo==='perdido'){
+    sheet('✖ Perdido · '+c.nome,`<div class="f"><label>Motivo</label><div class="chips" id="qMot">${['Sem resposta','Preço / sem crédito','Comprou com outro','Desistiu','Não era o perfil','Outro'].map(m=>`<button>${m}</button>`).join('')}</div>
+      <input id="qObs" placeholder="Detalhe (opcional)"></div>`,
+      async()=>{const m=document.querySelector('#qMot .on')?.textContent;if(!m){toast('Escolha o motivo');return false}const o=$('qObs').value.trim();
+        return atualizaLead(id,{etapa:'negado',data:null,hora:null,notas:[...(c.notas||[]),nota('✖ Perdido: '+m+(o?' — '+o:''))]}).then(ok=>{ok&&toast('Movido para Negado');return ok})},'Confirmar');return}
+}
+function msgNovoLead(l){const im=S.imoveis.find(i=>i.id===l.imovel_id);
+  return`🔔 *Novo lead para você – Ipiranga*\n\n👤 *${l.nome}*${l.tel?'\n📱 '+l.tel:''}${l.busca?'\n🔎 '+l.busca:''}${im?'\n🏠 '+(im.codigo?im.codigo+' · ':'')+im.titulo:''}${l.origem?'\n📍 Origem: '+l.origem:''}${(l.notas||[]).length?'\n📝 '+l.notas[l.notas.length-1].t.slice(0,200):''}\n\n${l.tel?'Chame agora: '+waLink(l.tel)+'\n':''}CRM: ${APP_URL}`}
+function avisarCorretor(l){const p=S.perfis.find(x=>x.id===l.corretor_id);if(!p||p.id===S.me.id)return;
+  if(!p.whatsapp){toast(`Lead salvo. Cadastre o WhatsApp de ${p.nome.split(' ')[0]} na aba Equipe para avisar.`);return}
+  sheet('Avisar '+p.nome.split(' ')[0]+'?',`<p style="margin:0 0 14px;color:var(--muted)">O lead <b style="color:var(--text)">${esc(l.nome)}</b> foi para <b style="color:var(--text)">${esc(p.nome)}</b>. Toque abaixo para mandar o aviso no WhatsApp dele já com os dados do cliente.</p>
+    <a class="btnwa" style="width:100%" href="${esc(waLink(p.whatsapp,msgNovoLead(l)))}" target="_blank" rel="noopener" onclick="setTimeout(fecharOv,300)">💬 Avisar ${esc(p.nome.split(' ')[0])} no WhatsApp</a>`,null)}
 
 /* ================= IMÓVEIS ================= */
 $('iTipo').innerHTML+=opts(TIPOS);$('iStatus').innerHTML+=opts(STATUS);$('miTipo').innerHTML=opts(TIPOS);$('miStatus').innerHTML=opts(STATUS);
@@ -674,6 +737,7 @@ function rDash(){
   const mm=m=>new Date(m+'-15T12:00:00').toLocaleDateString('pt-BR',{month:'short'}).replace('.','');
   $('dash').innerHTML=`
   <div class="dhead"><div><h1>${saud}, ${esc(S.me.nome.split(' ')[0])} 👋</h1><p>${new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'})}${dir?' · visão de toda a equipe':ger?' · visão da equipe de corretores':' · seus números'}</p></div></div>
+  ${S.me.whatsapp?'':`<div class="aviso">📱 <b>Cadastre seu WhatsApp</b> para receber os avisos de novos leads: <input id="meuWa" placeholder="(62) 9 9999-9999" inputmode="tel"><button class="btn sm" id="meuWaOk">Salvar</button></div>`}
   <div class="kpis">${kpis.map(k=>`<div class="kpi" style="--k:${k.k}" data-go="${k.go}"><span class="ic">${k.ic}</span><small>${k.l}</small><b>${k.v}</b><span>${esc(k.s)}</span></div>`).join('')}</div>
   <div class="dgrid">
     <div class="box w7"><h3>Funil de leads</h3><div class="sub">Clientes em cada etapa · clique numa barra para abrir</div>${hbar(funil)}</div>
@@ -694,7 +758,9 @@ function rDash(){
       ${hbar(tps.map(([l,v])=>({l,v,go:'imoveis'})))}</div>
   </div>`;
 }
-$('dash').addEventListener('click',e=>{const g=e.target.closest('[data-go]');if(!g)return;const[v,et]=g.dataset.go.split(':');S.lFiltro=et||'todos';irPara(v)});
+$('dash').addEventListener('click',async e=>{if(e.target.id==='meuWaOk'){const n=$('meuWa').value.trim();if(soDig(n).length<10)return toast('Número inválido');
+    const{error}=await sb.rpc('set_meu_whatsapp',{numero:n});if(error)return falha(error);S.me.whatsapp=n;const p=S.perfis.find(x=>x.id===S.me.id);if(p)p.whatsapp=n;toast('WhatsApp salvo ✓');return rDash()}
+  const g=e.target.closest('[data-go]');if(!g)return;const[v,et]=g.dataset.go.split(':');S.lFiltro=et||'todos';irPara(v)});
 document.addEventListener('mousemove',e=>{const t=e.target.closest&&e.target.closest('[data-tip]'),tip=$('tip');if(!t){tip.style.display='none';return}
   tip.textContent=t.dataset.tip;tip.style.display='block';tip.style.left=Math.min(e.clientX+14,innerWidth-270)+'px';tip.style.top=(e.clientY+14)+'px'});
 
@@ -724,9 +790,9 @@ async function importar(file){
   }catch(e){console.error(e);msg('Erro: '+(e.message||e)+(/column|origem_id|fotos|descricao/.test(e.message||'')?' — rode o arquivo import-1-preparar.sql no Supabase':''))}
 }
 function rEquipe(){if(!isDir())return;const P=[...S.perfis].sort((a,b)=>(a.ativo===b.ativo?0:a.ativo?1:-1)||a.nome.localeCompare(b.nome));
-  $('eList').innerHTML=rImport()+`<table><thead><tr><th>Nome</th><th class="hidem">E-mail</th><th>Papel</th><th>Acesso</th><th class="num hidem">Leads ativos</th></tr></thead><tbody>${P.map(p=>{const eu=p.id===S.me.id;
+  $('eList').innerHTML=rImport()+`<table><thead><tr><th>Nome</th><th class="hidem">E-mail</th><th>WhatsApp</th><th>Papel</th><th>Acesso</th><th class="num hidem">Leads ativos</th></tr></thead><tbody>${P.map(p=>{const eu=p.id===S.me.id;
    const nl=S.leads.filter(l=>l.corretor_id===p.id&&!FINAIS.includes(l.etapa)).length;
-   return`<tr><td><b>${esc(p.nome)}</b>${eu?' <span class="pill br">você</span>':''}</td><td class="hidem">${esc(p.email||'')}</td>
+   return`<tr><td><b>${esc(p.nome)}</b>${eu?' <span class="pill br">você</span>':''}</td><td class="hidem">${esc(p.email||'')}</td><td><input class="sel" data-wa="${p.id}" value="${esc(p.whatsapp||'')}" placeholder="(62) 9…" style="padding:6px 8px;width:150px"></td>
    <td>${eu?'Diretor':`<select class="sel" data-papel="${p.id}" style="padding:6px 8px">${opts([{v:'corretor',t:'Corretor'},{v:'gerente',t:'Gerente'},{v:'diretor',t:'Diretor'}],p.papel)}</select>`}</td>
    <td>${eu?'<span class="pill green">Liberado</span>':p.ativo?`<button class="btn ghost sm" data-ativo="${p.id}" data-val="0">Bloquear</button>`:`<button class="btn sm" data-ativo="${p.id}" data-val="1">✓ Liberar acesso</button>`}</td>
    <td class="num hidem">${nl}</td></tr>`}).join('')}</tbody></table>`}
@@ -737,6 +803,7 @@ $('eList').addEventListener('click',async e=>{const b=e.target.closest('[data-tr
   const{error}=await sb.from('leads').update({corretor_id:para,responsavel_origem:null}).eq('responsavel_origem',orig);
   if(error){b.disabled=false;return falha(error)}toast(`Leads de ${orig} → ${nomeDe(para)} ✓`);await carregar('leads');rEquipe()},true);
 $('eList').onchange=async e=>{if(e.target.id==='impFile'){const f=e.target.files[0];if(f)importar(f);return}
+  if(e.target.dataset.wa){const{error}=await sb.from('profiles').update({whatsapp:e.target.value.trim()||null}).eq('id',e.target.dataset.wa);if(error)return falha(error);toast('WhatsApp salvo ✓');await carregar('profiles');if(e.target.dataset.wa===S.me.id)S.me.whatsapp=e.target.value.trim();return}
   const s=e.target.closest('[data-papel]');if(!s)return;const{error}=await sb.from('profiles').update({papel:s.value}).eq('id',s.dataset.papel);
   if(error)return falha(error);toast('Papel atualizado ✓');await carregar('profiles');rEquipe()};
 
