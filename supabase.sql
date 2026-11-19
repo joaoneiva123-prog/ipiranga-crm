@@ -1,0 +1,155 @@
+-- =========================================================
+-- IPIRANGA CRM · estrutura do banco (rodar 1x no SQL Editor)
+-- =========================================================
+
+-- ---------- PERFIS ----------
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  nome text not null default '',
+  email text,
+  papel text not null default 'corretor' check (papel in ('diretor','corretor')),
+  ativo boolean not null default false,
+  criado timestamptz not null default now()
+);
+
+-- Primeiro usuário cadastrado vira Diretor ativo; os demais entram como Corretor aguardando aprovação
+create or replace function public.handle_new_user() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare primeiro boolean;
+begin
+  select not exists(select 1 from public.profiles) into primeiro;
+  insert into public.profiles(id, nome, email, papel, ativo)
+  values (new.id,
+          coalesce(new.raw_user_meta_data->>'nome', split_part(new.email,'@',1)),
+          new.email,
+          case when primeiro then 'diretor' else 'corretor' end,
+          primeiro);
+  return new;
+end $$;
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created after insert on auth.users
+  for each row execute function public.handle_new_user();
+
+create or replace function public.is_ativo() returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce((select ativo from public.profiles where id = auth.uid()), false)
+$$;
+create or replace function public.is_diretor() returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce((select ativo and papel = 'diretor' from public.profiles where id = auth.uid()), false)
+$$;
+
+-- ---------- IMÓVEIS (compartilhado) ----------
+create table if not exists public.imoveis (
+  id uuid primary key default gen_random_uuid(),
+  codigo text,
+  titulo text not null,
+  tipo text,
+  finalidade text default 'Venda',
+  bairro text,
+  endereco text,
+  valor numeric,
+  quartos int, suites int, vagas int, area numeric,
+  status text not null default 'Disponível',
+  proprietario text,
+  tel_proprietario text,
+  obs text,
+  criado_por uuid references public.profiles(id) default auth.uid(),
+  criado timestamptz not null default now(),
+  atualizado timestamptz not null default now()
+);
+
+-- ---------- LEADS ----------
+create table if not exists public.leads (
+  id uuid primary key default gen_random_uuid(),
+  corretor_id uuid not null references public.profiles(id) default auth.uid(),
+  nome text not null,
+  tel text,
+  etapa text not null default 'novo',
+  origem text,
+  data date,
+  hora text,
+  busca text,
+  notas jsonb not null default '[]'::jsonb,
+  imovel_id uuid references public.imoveis(id) on delete set null,
+  criado timestamptz not null default now(),
+  atualizado timestamptz not null default now()
+);
+create index if not exists leads_corretor_idx on public.leads(corretor_id);
+
+-- ---------- FINANCEIRO ----------
+create table if not exists public.financeiro (
+  id uuid primary key default gen_random_uuid(),
+  tipo text not null check (tipo in ('pagar','receber')),
+  descricao text not null,
+  categoria text,
+  valor numeric not null default 0,
+  vencimento date,
+  pago boolean not null default false,
+  pago_em date,
+  corretor_id uuid references public.profiles(id) on delete set null,
+  imovel_id uuid references public.imoveis(id) on delete set null,
+  obs text,
+  criado_por uuid references public.profiles(id) default auth.uid(),
+  criado timestamptz not null default now()
+);
+
+-- ---------- SEGURANÇA (RLS) ----------
+alter table public.profiles   enable row level security;
+alter table public.imoveis    enable row level security;
+alter table public.leads      enable row level security;
+alter table public.financeiro enable row level security;
+
+-- perfis: cada um vê o próprio; ativos veem a equipe; só diretor altera
+drop policy if exists p_sel on public.profiles;
+create policy p_sel on public.profiles for select to authenticated
+  using (id = auth.uid() or public.is_ativo());
+drop policy if exists p_upd on public.profiles;
+create policy p_upd on public.profiles for update to authenticated
+  using (public.is_diretor()) with check (public.is_diretor());
+drop policy if exists p_del on public.profiles;
+create policy p_del on public.profiles for delete to authenticated
+  using (public.is_diretor() and id <> auth.uid());
+
+-- imóveis: todos ativos veem, cadastram e editam; só diretor exclui
+drop policy if exists i_sel on public.imoveis;
+create policy i_sel on public.imoveis for select to authenticated using (public.is_ativo());
+drop policy if exists i_ins on public.imoveis;
+create policy i_ins on public.imoveis for insert to authenticated with check (public.is_ativo());
+drop policy if exists i_upd on public.imoveis;
+create policy i_upd on public.imoveis for update to authenticated using (public.is_ativo()) with check (public.is_ativo());
+drop policy if exists i_del on public.imoveis;
+create policy i_del on public.imoveis for delete to authenticated using (public.is_diretor());
+
+-- leads: corretor só os dele; diretor todos
+drop policy if exists l_sel on public.leads;
+create policy l_sel on public.leads for select to authenticated
+  using (public.is_diretor() or (public.is_ativo() and corretor_id = auth.uid()));
+drop policy if exists l_ins on public.leads;
+create policy l_ins on public.leads for insert to authenticated
+  with check (public.is_diretor() or (public.is_ativo() and corretor_id = auth.uid()));
+drop policy if exists l_upd on public.leads;
+create policy l_upd on public.leads for update to authenticated
+  using (public.is_diretor() or (public.is_ativo() and corretor_id = auth.uid()))
+  with check (public.is_diretor() or (public.is_ativo() and corretor_id = auth.uid()));
+drop policy if exists l_del on public.leads;
+create policy l_del on public.leads for delete to authenticated
+  using (public.is_diretor() or (public.is_ativo() and corretor_id = auth.uid()));
+
+-- financeiro: diretor tudo; corretor só vê os lançamentos marcados com o nome dele (comissões)
+drop policy if exists f_sel on public.financeiro;
+create policy f_sel on public.financeiro for select to authenticated
+  using (public.is_diretor() or (public.is_ativo() and corretor_id = auth.uid()));
+drop policy if exists f_ins on public.financeiro;
+create policy f_ins on public.financeiro for insert to authenticated with check (public.is_diretor());
+drop policy if exists f_upd on public.financeiro;
+create policy f_upd on public.financeiro for update to authenticated using (public.is_diretor()) with check (public.is_diretor());
+drop policy if exists f_del on public.financeiro;
+create policy f_del on public.financeiro for delete to authenticated using (public.is_diretor());
+
+-- ---------- TEMPO REAL (TV atualiza sozinha) ----------
+do $$ begin
+  begin alter publication supabase_realtime add table public.leads;      exception when others then null; end;
+  begin alter publication supabase_realtime add table public.imoveis;    exception when others then null; end;
+  begin alter publication supabase_realtime add table public.financeiro; exception when others then null; end;
+end $$;
