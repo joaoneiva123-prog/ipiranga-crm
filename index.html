@@ -7,7 +7,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Ipiranga CRM">
 <link rel="manifest" href="manifest.json">
-<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-512.png">
 <title>Ipiranga CRM</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700;9..40,800&display=swap" rel="stylesheet">
@@ -33,7 +34,7 @@ button,input,select,textarea{font:inherit;color:inherit}button{cursor:pointer}
 .brand{display:flex;flex-direction:column;line-height:1}
 .brand b{font-size:22px;letter-spacing:.18em;font-weight:800}
 .brand span{font-size:11px;letter-spacing:.3em;color:var(--brand2);margin-top:4px;text-transform:uppercase}
-.authbox .brand{margin-bottom:22px}.authbox .brand b{font-size:28px}
+.brand img{height:34px;display:block}.authbox .brand{margin-bottom:24px}.authbox .brand img{height:auto;width:100%;max-width:300px}
 .f{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
 .f label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700}
 .f input,.f select,.f textarea{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:10px 12px;width:100%}
@@ -142,13 +143,13 @@ td.num,th.num{text-align:right;white-space:nowrap}
 
 <!-- ============ TELAS DE ACESSO ============ -->
 <div class="auth hide" id="scrSetup"><div class="authbox">
-  <div class="brand"><b>IPIRANGA</b><span>Gestão Imobiliária</span></div>
+  <div class="brand"><img src="logo-escuro.png" alt="Ipiranga Gestão Imobiliária"></div>
   <h1>Configuração pendente</h1>
   <p>Preencha <b>SUPABASE_URL</b> e <b>SUPABASE_ANON_KEY</b> no início do arquivo <code>index.html</code>.</p>
 </div></div>
 
 <div class="auth hide" id="scrLogin"><div class="authbox">
-  <div class="brand"><b>IPIRANGA</b><span>Gestão Imobiliária</span></div>
+  <div class="brand"><img src="logo-escuro.png" alt="Ipiranga Gestão Imobiliária"></div>
   <h1 id="lgTitle">Entrar</h1>
   <form id="lgForm">
     <div class="f hide" id="lgNomeBox"><label>Seu nome</label><input id="lgNome" autocomplete="name"></div>
@@ -161,7 +162,7 @@ td.num,th.num{text-align:right;white-space:nowrap}
 </div></div>
 
 <div class="auth hide" id="scrPend"><div class="authbox">
-  <div class="brand"><b>IPIRANGA</b><span>Gestão Imobiliária</span></div>
+  <div class="brand"><img src="logo-escuro.png" alt="Ipiranga Gestão Imobiliária"></div>
   <h1>Aguardando aprovação</h1>
   <p>Sua conta foi criada. O diretor precisa liberar seu acesso na aba <b>Equipe</b>. Depois é só entrar de novo.</p>
   <button class="btn ghost full" id="pendCheck">Já fui liberado</button>
@@ -171,7 +172,7 @@ td.num,th.num{text-align:right;white-space:nowrap}
 <!-- ============ APP ============ -->
 <div id="app" class="hide">
   <header>
-    <div class="brand"><b>IPIRANGA</b><span>Gestão Imobiliária</span></div>
+    <div class="brand"><img src="logo-escuro.png" alt="Ipiranga Gestão Imobiliária"></div>
     <nav id="nav">
       <button data-v="leads" class="on">📋 Leads</button>
       <button data-v="imoveis">🏠 Imóveis</button>
