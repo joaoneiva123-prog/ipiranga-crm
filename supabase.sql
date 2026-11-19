@@ -345,3 +345,10 @@ alter table public.vendas add column if not exists comissao_diretor boolean not 
 
 -- ---------- LIGA LANÇAMENTOS À VENDA ----------
 alter table public.financeiro add column if not exists venda_id uuid references public.vendas(id) on delete set null;
+-- Financeiro: diretor geral tudo · diretor (menos o do geral) · gerente vê repasses dele e dos corretores · corretor só os dele
+drop policy if exists f_sel on public.financeiro;
+create policy f_sel on public.financeiro for select to authenticated using (
+  public.is_master()
+  or (public.is_diretor() and not public.is_master(criado_por))
+  or (public.is_ativo() and corretor_id = auth.uid())
+  or (public.is_gerente() and public.papel_de(corretor_id) = 'corretor'));

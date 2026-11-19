@@ -506,7 +506,7 @@ async function iniciar(){
   S.me=me; tela('app');
   $('meNome').textContent=me.nome; $('mePapel').textContent=me.master?'Diretor geral':({diretor:'Diretor',gerente:'Gerente',corretor:'Corretor'})[me.papel]||'Corretor';
   $('navEq').classList.toggle('hide',!isDir());
-  $('navFin').textContent=isDir()?'💰 Financeiro':'💰 Minhas comissões';$('navFin').classList.toggle('hide',isGer());
+  $('navFin').textContent=isDir()?'💰 Financeiro':isGer()?'💰 Comissões da equipe':'💰 Minhas comissões';
   $('fNovo').classList.toggle('hide',!isDir());
   $('mlCorBox').classList.toggle('hide',!gestor());
   $('miDel').classList.toggle('hide',!isDir());
@@ -811,7 +811,7 @@ $('fMes').value=hojeISO().slice(0,7);
 $('fTabs').onclick=e=>{const b=e.target.closest('[data-t]');if(b){S.fTab=b.dataset.t;rFin()}};
 function aberto(f){return!f.pago}
 function vencido(f){return!f.pago&&f.vencimento&&diff(f.vencimento)<0}
-function rFin(){rFin0();if(isDir()&&S.fTab==='comissoes')$('fList').innerHTML=htmlComissoes($('fMes').value,$('fCorretor').value)}
+function rFin(){rFin0();if(gestor()&&S.fTab==='comissoes')$('fList').innerHTML=htmlComissoes($('fMes').value,$('fCorretor').value)}
 function htmlComissoes(mes,cor){
   const V=S.vendas.filter(v=>(!mes||(v.data||'').startsWith(mes))&&(!cor||v.corretor_id===cor)&&+v.comissao).sort((a,b)=>a.data<b.data?-1:1);
   if(!V.length)return'<div class="empty">Nenhuma venda com comissão neste mês.</div>';
@@ -822,44 +822,46 @@ function htmlComissoes(mes,cor){
     const cel=(pct,val,cor)=>`<td class="num"><span class="pill" style="background:${cor};color:#fff">${fmtPct(pct)}</span><br><b>${brl(val)}</b></td>`;
     return`<tr><td>${fmtD(v.data)}</td><td><b>${esc(v.cliente||'—')}</b><br><small style="color:var(--muted)">${esc(i?nomeImovel(i):v.imovel_desc||'')}</small></td><td>${esc(nomeDe(v.corretor_id))}${P.mesmo?'<br><small style="color:var(--muted)">corretor + gestão</small>':''}</td>
      <td class="num"><b>${brl(P.total)}</b><br><small style="color:var(--muted)">${fmtPct(+v.comissao_pct||0)} de ${brlK(v.valor)}</small></td>
-     ${cel(P.pctCorr,P.corr,'#3b82f6')}${cel(P.pctGer,P.ger,'#a855f7')}${cel(P.pctIpi,P.ipi,'#B15F28')}
-     <td>${L.length?(rec?.pago?'<span class="pill green">Recebida</span>':'<span class="pill amber">A receber</span>'):`<button class="btn sm" data-lancv="${v.id}">Lançar no financeiro</button>`}</td></tr>`}).join('');
+     ${cel(P.pctCorr,P.corr,'#3b82f6')}${cel(P.pctGer,P.ger,'#a855f7')}${isDir()?cel(P.pctIpi,P.ipi,'#B15F28'):''}
+     <td>${!isDir()?(L.some(f=>f.pago)?'<span class="pill green">Paga</span>':'<span class="pill amber">A pagar</span>'):L.length?(rec?.pago?'<span class="pill green">Recebida</span>':'<span class="pill amber">A receber</span>'):`<button class="btn sm" data-lancv="${v.id}">Lançar no financeiro</button>`}</td></tr>`}).join('');
   return`<div class="kpis" style="margin-bottom:12px">
     <div class="kpi" style="--k:#16a34a"><small>Comissões do mês</small><b>${brlK(T.tot)}</b><span>vendas de corretores e gerente</span></div>
     <div class="kpi" style="--k:#3b82f6"><small>Repasse corretores</small><b>${brlK(T.corr)}</b><span>${T.tot?fmtPct(Math.round(T.corr/T.tot*1000)/10):'0%'} das comissões</span></div>
     <div class="kpi" style="--k:#a855f7"><small>Repasse gestão</small><b>${brlK(T.ger)}</b><span>${fmtPct(PCT_GERENTE)} das comissões</span></div>
-    <div class="kpi" style="--k:#B15F28"><small>Fica para a Ipiranga</small><b style="color:var(--brand2)">${brlK(T.ipi)}</b><span>${T.tot?fmtPct(Math.round(T.ipi/T.tot*1000)/10):'0%'} das comissões</span></div></div>
-   <table><thead><tr><th>Data</th><th>Venda</th><th>Corretor</th><th class="num">Comissão total</th><th class="num">Corretor</th><th class="num">Gestão</th><th class="num">Ipiranga</th><th>Situação</th></tr></thead>
-   <tbody>${linhas}<tr><td colspan="3" style="text-align:right;color:var(--muted)">Total do mês</td><td class="num"><b>${brl(T.tot)}</b></td><td class="num"><b>${brl(T.corr)}</b></td><td class="num"><b>${brl(T.ger)}</b></td><td class="num"><b style="color:var(--brand2)">${brl(T.ipi)}</b></td><td></td></tr></tbody></table>
+    ${isDir()?'':'<!--'}<div class="kpi" style="--k:#B15F28"><small>Fica para a Ipiranga</small><b style="color:var(--brand2)">${brlK(T.ipi)}</b><span>${T.tot?fmtPct(Math.round(T.ipi/T.tot*1000)/10):'0%'} das comissões</span></div>${isDir()?'':'-->'}</div>
+   <table><thead><tr><th>Data</th><th>Venda</th><th>Corretor</th><th class="num">Comissão total</th><th class="num">Corretor</th><th class="num">Gestão</th>${isDir()?'<th class="num">Ipiranga</th>':''}<th>Situação</th></tr></thead>
+   <tbody>${linhas}<tr><td colspan="3" style="text-align:right;color:var(--muted)">Total do mês</td><td class="num"><b>${brl(T.tot)}</b></td><td class="num"><b>${brl(T.corr)}</b></td><td class="num"><b>${brl(T.ger)}</b></td>${isDir()?`<td class="num"><b style="color:var(--brand2)">${brl(T.ipi)}</b></td>`:''}<td></td></tr></tbody></table>
    ${T.dir?`<p style="color:var(--muted);font-size:13px">Vendas de diretores no mês: ${brl(T.dir)} em comissões (não entram na conta da Ipiranga).</p>`:''}`}
 $('fList').addEventListener('click',async e=>{const b=e.target.closest('[data-lancv]');if(!b)return;e.stopImmediatePropagation();
   const v=S.vendas.find(x=>x.id===b.dataset.lancv);const L=lancamentosDaVenda(v);if(!L.length)return;b.disabled=true;
   const{error}=await sb.from('financeiro').insert(L);if(error){b.disabled=false;return falha(error)}toast('Lançamentos criados ✓');await carregar('financeiro');rFin()},true);
-function rFin0(){
-  const mes=$('fMes').value,sit=$('fSit').value,sc=$('fCorretor');sc.classList.toggle('hide',!isDir());
-  if(isDir()){const v=sc.value;sc.innerHTML='<option value="">Todos os corretores</option>'+opts(ativos().map(p=>({v:p.id,t:p.nome})),v)}
-  const cor=isDir()?sc.value:'';
-  let F=S.fin.filter(f=>(!mes||(f.vencimento||'').startsWith(mes)||(sit!=='pagos'&&vencido(f)))&&(!cor||f.corretor_id===cor));
-  const doMes=S.fin.filter(f=>(!mes||(f.vencimento||'').startsWith(mes))&&(!cor||f.corretor_id===cor));
+function rFin0(){const FIN=isGer()?FIN.filter(f=>equipe().some(p=>p.id===f.corretor_id)):S.fin;
+  const mes=$('fMes').value,sit=$('fSit').value,sc=$('fCorretor');sc.classList.toggle('hide',!gestor());
+  if(gestor()){const v=sc.value;sc.innerHTML='<option value="">Todos os corretores</option>'+opts((isDir()?ativos():equipe()).map(p=>({v:p.id,t:p.nome})),v)}
+  const cor=gestor()?sc.value:'';
+  let F=FIN.filter(f=>(!mes||(f.vencimento||'').startsWith(mes)||(sit!=='pagos'&&vencido(f)))&&(!cor||f.corretor_id===cor));
+  const doMes=FIN.filter(f=>(!mes||(f.vencimento||'').startsWith(mes))&&(!cor||f.corretor_id===cor));
   const soma=(arr,t)=>arr.filter(f=>f.tipo===t&&aberto(f)).reduce((s,f)=>s+(+f.valor||0),0);
   if(isDir()){
     const r=soma(doMes,'receber'),p=soma(doMes,'pagar');
     $('fRec').textContent=brlK(r);$('fPag').textContent=brlK(p);$('fSaldo').textContent=brlK(r-p);$('fSaldo').parentElement.className='stat '+(r-p<0?'red':'green');
     $('fPag').parentElement.classList.remove('hide');$('fSaldo').parentElement.classList.remove('hide');$('fRecL').textContent='A receber';
   }else{
-    $('fRec').textContent=brlK(doMes.filter(aberto).reduce((s,f)=>s+(+f.valor||0),0));$('fRecL').textContent='Comissões a receber';
+    $('fRec').textContent=brlK(doMes.filter(aberto).reduce((s,f)=>s+(+f.valor||0),0));$('fRecL').textContent=isGer()?'Repasses no mês':'Comissões a receber';
     $('fPag').parentElement.classList.add('hide');$('fSaldo').parentElement.classList.add('hide');
   }
-  $('fAtr').textContent=S.fin.filter(f=>vencido(f)&&(!cor||f.corretor_id===cor)).length;
+  $('fAtr').textContent=FIN.filter(f=>vencido(f)&&(!cor||f.corretor_id===cor)).length;
   if(isDir()){$('fTabs').innerHTML=[['comissoes','🧮 Divisão das comissões'],['receber','⬇️ A receber'],['pagar','⬆️ A pagar'],['todos','Tudo']].map(([t,n])=>`<button class="tab ${S.fTab===t?'on':''}" data-t="${t}">${n}<span class="n">${t==='comissoes'?S.vendas.filter(v=>(v.data||'').startsWith(mes)&&+v.comissao).length:F.filter(f=>(t==='todos'||f.tipo===t)&&(sit==='todos'||(sit==='pagos'?f.pago:!f.pago))).length}</span></button>`).join('');
-    F=F.filter(f=>S.fTab==='todos'||f.tipo===S.fTab)}else $('fTabs').innerHTML='';
+    F=F.filter(f=>S.fTab==='todos'||f.tipo===S.fTab)}
+  else if(isGer()){if(!['comissoes','todos'].includes(S.fTab))S.fTab='comissoes';$('fTabs').innerHTML=[['comissoes','🧮 Divisão das comissões'],['todos','Repasses da equipe']].map(([t,n])=>`<button class="tab ${S.fTab===t?'on':''}" data-t="${t}">${n}</button>`).join('')}
+  else $('fTabs').innerHTML='';
   F=F.filter(f=>sit==='todos'||(sit==='pagos'?f.pago:!f.pago)).sort((a,b)=>(a.vencimento||'9')<(b.vencimento||'9')?-1:1);
   const tot=F.reduce((s,f)=>s+(f.tipo==='pagar'&&isDir()&&S.fTab==='todos'?-1:1)*(+f.valor||0),0);
-  $('fList').innerHTML=F.length?`<table><thead><tr><th>Vencimento</th><th>Descrição</th><th class="hidem">Categoria</th>${isDir()?'<th class="hidem">Corretor</th>':''}<th class="num">Valor</th><th>Situação</th>${isDir()?'<th></th>':''}</tr></thead><tbody>
+  $('fList').innerHTML=F.length?`<table><thead><tr><th>Vencimento</th><th>Descrição</th><th class="hidem">Categoria</th>${gestor()?'<th class="hidem">Corretor</th>':''}<th class="num">Valor</th><th>Situação</th>${isDir()?'<th></th>':''}</tr></thead><tbody>
    ${F.map(f=>{const n=diff(f.vencimento);const sit=f.pago?`<span class="pill green">${f.tipo==='pagar'&&isDir()?'Pago':'Recebido'}${f.pago_em?' '+fmtD(f.pago_em).slice(0,5):''}</span>`:n===null?'<span class="pill">Sem data</span>':n<0?`<span class="pill red">Vencido ${-n}d</span>`:n===0?'<span class="pill amber">Vence hoje</span>':n<=5?`<span class="pill blue">Em ${n}d</span>`:'<span class="pill">Em aberto</span>';
-     return`<tr class="${isDir()?'click':''}" data-fin="${f.id}"><td>${fmtD(f.vencimento)}</td><td>${f.tipo==='pagar'&&isDir()?'⬆️':'⬇️'} ${esc(f.descricao)}</td><td class="hidem">${esc(f.categoria||'')}</td>${isDir()?`<td class="hidem">${f.corretor_id?esc(nomeDe(f.corretor_id)):''}</td>`:''}
+     return`<tr class="${isDir()?'click':''}" data-fin="${f.id}"><td>${fmtD(f.vencimento)}</td><td>${f.tipo==='pagar'&&isDir()?'⬆️':'⬇️'} ${esc(f.descricao)}</td><td class="hidem">${esc(f.categoria||'')}</td>${gestor()?`<td class="hidem">${f.corretor_id?esc(nomeDe(f.corretor_id)):''}</td>`:''}
      <td class="num" style="color:${f.tipo==='pagar'&&isDir()?'#fca5a5':'#86efac'};font-weight:700">${brl(f.valor)}</td><td>${sit}</td>${isDir()?`<td>${f.pago?'':`<button class="btn sm" data-pagar="${f.id}">${f.tipo==='pagar'?'Pagar':'Receber'} ✓</button>`}</td>`:''}</tr>`}).join('')}
-   <tr><td colspan="${isDir()?4:3}" style="text-align:right;color:var(--muted)" class="hidem">Total da lista</td><td class="num" style="font-weight:800">${brl(tot)}</td><td colspan="2"></td></tr></tbody></table>`
+   <tr><td colspan="${gestor()?4:3}" style="text-align:right;color:var(--muted)" class="hidem">Total da lista</td><td class="num" style="font-weight:800">${brl(tot)}</td><td colspan="2"></td></tr></tbody></table>`
   :`<div class="empty">Nenhum lançamento ${sit==='pagos'?'pago':'em aberto'} neste mês.${isDir()?' Clique em <b>+ Lançamento</b>.':''}</div>`;
 }
 $('fList').onclick=async e=>{const p=e.target.closest('[data-pagar]');
@@ -1055,7 +1057,7 @@ async function cancelarVenda(){const v=vdCtx.venda;if(!v)return;
 
 function vendasFiltradas(){return S.vendas.filter(v=>(v.data||'').startsWith(String(S.vAno))&&(!S.vMes||(v.data||'').slice(5,7)===S.vMes)&&(!S.vCor||v.corretor_id===S.vCor))}
 function rVendas(){
-  const V=vendasFiltradas(),verCom=!isGer(),anos=[...new Set([new Date().getFullYear(),...S.vendas.map(v=>+(v.data||'').slice(0,4)).filter(Boolean)])].sort((a,b)=>b-a);
+  const V=vendasFiltradas(),verCom=true,anos=[...new Set([new Date().getFullYear(),...S.vendas.map(v=>+(v.data||'').slice(0,4)).filter(Boolean)])].sort((a,b)=>b-a);
   const tot=V.reduce((s,v)=>s+(+v.valor||0),0),souCor=!gestor();
   const com=V.reduce((s,v)=>s+(+(souCor?(v.corretor_id===S.me.id?v.comissao_corretor:0)+(v.gerente_id===S.me.id?+v.comissao_gerente||0:0):v.comissao)||0),0);
   const ipi=V.reduce((s,v)=>s+(+v.comissao_ipiranga||0),0);
@@ -1104,7 +1106,7 @@ $('vendas').addEventListener('click',e=>{const t=e.target;
   const c=t.closest('[data-vcor]');if(c&&gestor()){S.vCor=S.vCor===c.dataset.vcor?'':c.dataset.vcor;return rVendas()}
   const g=t.closest('[data-regv]');if(g)return abrirVenda({lead:S.leads.find(l=>l.id===g.dataset.regv)})});
 $('vendas').addEventListener('change',e=>{const id=e.target.id;if(id==='vAno')S.vAno=+e.target.value;if(id==='vMes')S.vMes=e.target.value;if(id==='vCor')S.vCor=e.target.value;rVendas()});
-function baixarCsv(){const V=vendasFiltradas(),verCom=!isGer(),q=s=>'"'+String(s??'').replace(/"/g,'""')+'"',nb=n=>n==null?'':String(n).replace('.',',');
+function baixarCsv(){const V=vendasFiltradas(),verCom=true,q=s=>'"'+String(s??'').replace(/"/g,'""')+'"',nb=n=>n==null?'':String(n).replace('.',',');
   const dir=isDir(),head=['Data','Mês','Cliente','Unidade','Bairro','Corretor','Tipo','Valor',...(verCom?['Comissão %','Comissão total','Parte corretor','% corretor',...(dir?['Parte gerente','Ipiranga']:[])]:[]),'Observações'];
   const linhas=V.sort((a,b)=>a.data<b.data?-1:1).map(v=>{const i=S.imoveis.find(x=>x.id===v.imovel_id);
     return[fmtD(v.data),(v.data||'').slice(0,7),v.cliente,i?nomeImovel(i):v.imovel_desc,i?.bairro,nomeDe(v.corretor_id),v.tipo,nb(v.valor),...(verCom?[nb(v.comissao_pct),nb(v.comissao),v.comissao_diretor?'diretor':nb(v.comissao_corretor),nb(v.pct_corretor),...(dir?[nb(v.comissao_gerente),v.comissao_diretor?'—':nb(v.comissao_ipiranga)]:[])]:[]),v.obs].map(q).join(';')});
