@@ -323,6 +323,7 @@ td.num,th.num{text-align:right;white-space:nowrap}
       <select class="sel" id="iCond"><option value="">Todos os condomínios</option></select>
       <div class="perto"><input class="sel" id="iPerto" placeholder="📍 Perto de: CEP ou endereço"><select class="sel" id="iRaio"><option value="1">1 km</option><option value="2" selected>2 km</option><option value="5">5 km</option><option value="10">10 km</option></select><button class="btn ghost sm" id="iPertoOk">Buscar</button></div>
       <button class="btn ghost sm" id="iLimpar" type="button">✕ Limpar filtros</button>
+      <button class="btn ghost sm hide" id="iMelhorar" type="button">✨ Melhorar fotos antigas</button>
       <div class="toggle"><button id="tgLista" class="on">▦ Lista</button><button id="tgMapa">🗺️ Mapa</button></div>
       <div class="stats"><div class="stat"><b id="iTotal">0</b><small>Imóveis</small></div><div class="stat green"><b id="iDisp">0</b><small>Disponíveis</small></div></div>
     </div>
@@ -540,7 +541,7 @@ async function iniciar(){
   $('navFin').textContent=isDir()?'💰 Financeiro':isGer()?'💰 Comissões da equipe':'💰 Minhas comissões';$('navFin').classList.toggle('hide',isSec());$('navCap').classList.toggle('hide',!podeCaptar());
   $('fNovo').classList.toggle('hide',!isDir());
   $('mlCorBox').classList.toggle('hide',!gestor());
-  $('miDel').classList.toggle('hide',!isDir());
+  $('miDel').classList.toggle('hide',!isDir());$('iMelhorar').classList.toggle('hide',!isDir());
   await carregarTudo(); tempoReal(); setInterval(carregarTudo,120000);
 }
 async function carregar(t){
@@ -849,6 +850,38 @@ $('miUp').addEventListener('change',async e=>{const fs=[...e.target.files];e.tar
       miFotos.push(sb.storage.from('fotos').getPublicUrl(path).data.publicUrl);ok++;rGal()}
     catch(err){console.error(err);msg('⚠️ Erro ao enviar: '+(err.message||err)+(/bucket|not found|row-level/i.test(err.message||'')?' — rode o SQL de fotos no Supabase':''));return}}
   msg(`✅ ${ok} foto${ok>1?'s':''} adicionada${ok>1?'s':''} com a marca da Ipiranga. Clique em Salvar.`)});
+
+/* ---------- Varredura: melhora + marca d'água em todas as fotos antigas e guarda no CRM ---------- */
+let varrendo=false,pararVarredura=false;
+function pendentesVarredura(soDisp){return S.imoveis.filter(i=>(!soDisp||i.status==='Disponível')&&(i.fotos||[]).some(u=>!fotoNossa(u)))}
+$('iMelhorar').onclick=()=>{const tela=()=>{const soD=$('vrDisp')?$('vrDisp').checked:true,P=pendentesVarredura(soD),nf=P.reduce((s,i)=>s+(i.fotos||[]).filter(u=>!fotoNossa(u)).length,0);
+  $('vrInfo').innerHTML=`<b>${nf} fotos</b> em <b>${P.length} imóveis</b> para melhorar.<br><span style="color:var(--muted)">Tempo estimado: ~${Math.max(1,Math.round(nf*1.2/60))} min · espaço no Supabase: ~${Math.round(nf*.18)} MB</span>`};
+  sheet('✨ Melhorar fotos antigas',`<p style="margin:0 0 10px;color:var(--muted)">Cada foto antiga é melhorada (luz, cor, contraste, nitidez), recebe a marca da Ipiranga e passa a ficar guardada no próprio CRM. Mantenha esta tela aberta até terminar. Se fechar, é só abrir de novo que ele continua de onde parou.</p>
+    <label class="chk"><input type="checkbox" id="vrDisp" checked> Só imóveis disponíveis (recomendado)</label>
+    <div id="vrInfo" style="margin:8px 0 12px"></div>
+    <div style="height:10px;background:var(--panel2);border-radius:6px;overflow:hidden"><div id="vrBar" style="height:100%;width:0;background:var(--brand);transition:width .3s"></div></div>
+    <div id="vrMsg" class="geomsg" style="margin-top:8px"></div>
+    <div style="display:flex;gap:8px;margin-top:12px"><button class="btn" id="vrIni" style="flex:1">▶ Começar</button><button class="btn ghost hide" id="vrStop" style="flex:1">⏸ Pausar</button></div>`,null);
+  tela();$('vrDisp').onchange=tela;$('vrStop').onclick=()=>{pararVarredura=true;$('vrMsg').textContent='Pausando depois da foto atual…'};
+  $('vrIni').onclick=()=>varrer($('vrDisp').checked)};
+async function varrer(soDisp){if(varrendo)return;varrendo=true;pararVarredura=false;$('vrIni').classList.add('hide');$('vrStop').classList.remove('hide');
+  const msg=t=>{const e=$('vrMsg');if(e)e.innerHTML=t},bar=p=>{const e=$('vrBar');if(e)e.style.width=p+'%'};
+  const P=pendentesVarredura(soDisp),total=P.reduce((s,i)=>s+(i.fotos||[]).filter(u=>!fotoNossa(u)).length,0);let feitas=0,ok=0,falhas=0,seguidas=0;
+  window.onbeforeunload=()=>'A melhoria das fotos ainda está rodando.';
+  try{for(const imo of P){if(pararVarredura)break;const novas=[...(imo.fotos||[])];let mudou=false;
+      for(let k=0;k<novas.length;k++){if(pararVarredura)break;const u=novas[k];if(fotoNossa(u))continue;feitas++;
+        msg(`Foto ${feitas} de ${total} · ${esc(imo.titulo||'')}`);bar(feitas/total*100);
+        try{const cv=await fotoComMarca(u,1400,true,true);if(!cv)throw new Error('bloqueada');
+          const blob=await new Promise(r=>cv.toBlob(r,'image/jpeg',.8)),path=`${imo.id}/${Date.now()}-${k}.jpg`;
+          const{error}=await sb.storage.from('fotos').upload(path,blob,{contentType:'image/jpeg'});if(error)throw error;
+          novas[k]=sb.storage.from('fotos').getPublicUrl(path).data.publicUrl;mudou=true;ok++;seguidas=0}
+        catch(e){falhas++;seguidas++;console.warn(u,e);
+          if(seguidas>=5&&ok===0){msg(`⚠️ <b>As fotos antigas estão bloqueadas pelo site de origem</b> (o servidor do sistema antigo não deixa copiar). Para liberar é preciso ativar o "proxy de fotos" no Supabase. Me avise que eu te passo o passo a passo.`);pararVarredura=true;break}
+          if(/bucket|row-level|not found/i.test(e.message||'')){msg('⚠️ Rode o SQL de fotos no Supabase (pasta "fotos") e tente de novo.');pararVarredura=true;break}}}
+      if(mudou){const{error}=await sb.from('imoveis').update({fotos:novas,atualizado:new Date().toISOString()}).eq('id',imo.id);if(!error)imo.fotos=novas}}
+  }finally{window.onbeforeunload=null;varrendo=false;$('vrStop')?.classList.add('hide');$('vrIni')?.classList.remove('hide');if($('vrIni'))$('vrIni').textContent='▶ Continuar';
+    if(!/bloqueadas|Rode o SQL/.test($('vrMsg')?.innerHTML||''))msg(`${pararVarredura?'⏸ Pausado':'✅ Concluído'}: <b>${ok}</b> foto${ok===1?'':'s'} melhorada${ok===1?'':'s'}${falhas?` · ${falhas} não ${falhas===1?'pôde':'puderam'} ser processada${falhas===1?'':'s'}`:''}.`);
+    rImoveis()}}
 
 /* ---------- PDF do imóvel ---------- */
 $('miPdf').onclick=()=>{const i=miId?S.imoveis.find(x=>x.id===miId):null;if(!i)return toast('Salve o imóvel antes de exportar');gerarPdf({...i,fotos:miFotos})};
