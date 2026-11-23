@@ -405,7 +405,7 @@ td.num,th.num{text-align:right;white-space:nowrap}
     <div class="f"><label>Proprietário</label><input id="miProp"></div>
     <div class="f"><label>Tel. proprietário</label><input id="miPropTel"></div>
     <div class="f full" id="miGalBox"><label>Fotos <span style="text-transform:none;letter-spacing:0;font-weight:500">· a 1ª é a capa · a marca da Ipiranga entra automaticamente</span></label><div class="gal" id="miGal"></div>
-      <input type="file" id="miUp" accept="image/*" multiple class="hide"><div class="geomsg" id="miUpMsg"></div></div>
+      <input type="file" id="miUp" accept="image/*" multiple class="hide"><label class="chk" style="margin:6px 0 0"><input type="checkbox" id="miMelhorar" checked> ✨ Melhorar fotos automaticamente (clarear, cor, contraste e nitidez)</label><div class="geomsg" id="miUpMsg"></div></div>
     <div class="f full"><label>Descrição do anúncio</label><textarea id="miDesc"></textarea></div>
     <div class="f full"><label>Observações internas</label><textarea id="miObs" placeholder="Aceita permuta, chave na portaria, não mostrar interior nos anúncios…"></textarea></div>
     <div class="f full" id="miLeads"></div>
@@ -805,7 +805,31 @@ const logoImg=()=>_imgCache.logo||(_imgCache.logo=carregaImg('logo-escuro.png'))
 async function desenhaMarca(ctx,w,h){const m=await marcaImg();let mw=w*.30,mh=mw*m.height/m.width;if(mh>h*.45){mh=h*.45;mw=mh*m.width/m.height}
   ctx.save();ctx.globalAlpha=.35;ctx.drawImage(m,(w-mw)/2,(h-mh)/2,mw,mh);ctx.restore()}
 /* foto -> canvas (redimensionada) com marca d'água; tenta direto e, se o site bloquear, pelo proxy do Supabase */
-async function fotoComMarca(src,max=1600,marca=true){
+/* Melhoria automática (grátis, no navegador): níveis/balanço de branco, clareia se escura, contraste, cor e nitidez */
+function melhorarFoto(ctx,w,h){
+  const img=ctx.getImageData(0,0,w,h),d=img.data,n=w*h;
+  const hist=[new Uint32Array(256),new Uint32Array(256),new Uint32Array(256)];let soma=0;
+  for(let p=0;p<d.length;p+=4){hist[0][d[p]]++;hist[1][d[p+1]]++;hist[2][d[p+2]]++;soma+=.299*d[p]+.587*d[p+1]+.114*d[p+2]}
+  const pct=(hh,q)=>{let a=0,t=n*q;for(let v=0;v<256;v++){a+=hh[v];if(a>=t)return v}return 255};
+  // níveis por canal (corrige amarelado/azulado) misturados com níveis globais para não exagerar
+  const lo=[0,1,2].map(c=>pct(hist[c],.005)),hi=[0,1,2].map(c=>pct(hist[c],.995));
+  const gLo=Math.min(...lo),gHi=Math.max(...hi);
+  const L=[0,1,2].map(c=>{const a=Math.min(18,.55*lo[c]+.45*gLo),b=Math.max(a+60,.55*hi[c]+.45*gHi);return[a,b]}); // preto no máx. 18: não escurece sombras
+  // brilho médio depois do ajuste de níveis -> gama só para clarear (alvo ~52%)
+  let ml=0;[.299,.587,.114].forEach((wt,c)=>{const[a,b]=L[c];for(let v=0;v<256;v++)ml+=wt*hist[c][v]*Math.min(1,Math.max(0,(v-a)/(b-a)))});ml/=n;
+  const gama=ml<.5?Math.max(.62,Math.log(.52)/Math.log(Math.max(ml,.05))):1;
+  const lut=[0,1,2].map(c=>{const t=new Uint8ClampedArray(256),[a,b]=L[c];for(let v=0;v<256;v++){let x=Math.min(1,Math.max(0,(v-a)/(b-a)));x=Math.pow(x,gama);
+    const s=x*x*(3-2*x);x=x*.78+s*.22; /* contraste suave (curva em S) */ t[v]=Math.round(x*255)}return t});
+  // balanço de branco (mundo cinza nos tons médios): tira amarelado/azulado de lâmpada
+  let sr=0,sg=0,sb=0,cn=0;for(let p=0;p<d.length;p+=16){const r=lut[0][d[p]],g=lut[1][d[p+1]],b=lut[2][d[p+2]],l=.299*r+.587*g+.114*b;if(l>40&&l<225){sr+=r;sg+=g;sb+=b;cn++}}
+  const mr=sr/cn||1,mg=sg/cn||1,mb=sb/cn||1,mm=(mr+mg+mb)/3,gan=x=>Math.min(1.25,Math.max(.8,1+.7*(mm/x-1))),Gr=gan(mr),Gg=gan(mg),Gb=gan(mb);
+  for(let p=0;p<d.length;p+=4){let r=lut[0][d[p]]*Gr,g=lut[1][d[p+1]]*Gg,b=lut[2][d[p+2]]*Gb;const m=.299*r+.587*g+.114*b,s=1.08;
+    d[p]=m+(r-m)*s;d[p+1]=m+(g-m)*s;d[p+2]=m+(b-m)*s}
+  // nitidez (unsharp leve)
+  const o=new Uint8ClampedArray(d),k=.35,W4=w*4;
+  for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){const p=(y*w+x)*4;for(let c=0;c<3;c++){const v=o[p+c],viz=(o[p+c-4]+o[p+c+4]+o[p+c-W4]+o[p+c+W4])/4;d[p+c]=v+k*(v-viz)}}
+  ctx.putImageData(img,0,0)}
+async function fotoComMarca(src,max=1600,marca=true,melhorar=false){
   let im=null;
   try{im=await carregaImg(src)}catch(e){}
   if(!im&&!src.startsWith('blob:')&&!src.startsWith('data:')){try{const s=(await sb.auth.getSession()).data.session;
@@ -813,11 +837,13 @@ async function fotoComMarca(src,max=1600,marca=true){
     if(r.ok){const b=await r.blob();im=await carregaImg(URL.createObjectURL(b))}}catch(e){}}
   if(!im)return null;
   const k=Math.min(1,max/Math.max(im.width,im.height)),cv=document.createElement('canvas');cv.width=Math.round(im.width*k);cv.height=Math.round(im.height*k);
-  const ctx=cv.getContext('2d');ctx.drawImage(im,0,0,cv.width,cv.height);if(marca&&!fotoNossa(src))await desenhaMarca(ctx,cv.width,cv.height);
+  const ctx=cv.getContext('2d');ctx.drawImage(im,0,0,cv.width,cv.height);
+  if(melhorar&&!fotoNossa(src)){try{melhorarFoto(ctx,cv.width,cv.height)}catch(e){}}
+  if(marca&&!fotoNossa(src))await desenhaMarca(ctx,cv.width,cv.height);
   try{cv.toDataURL('image/jpeg',.1)}catch(e){return null}return cv}
 $('miUp').addEventListener('change',async e=>{const fs=[...e.target.files];e.target.value='';if(!fs.length)return;const msg=t=>$('miUpMsg').textContent=t;let ok=0;
   for(let k=0;k<fs.length;k++){msg(`Enviando foto ${k+1} de ${fs.length}…`);
-    try{const cv=await fotoComMarca(URL.createObjectURL(fs[k]),1600,true);const blob=await new Promise(r=>cv.toBlob(r,'image/jpeg',.85));
+    try{const cv=await fotoComMarca(URL.createObjectURL(fs[k]),1600,true,$('miMelhorar').checked);const blob=await new Promise(r=>cv.toBlob(r,'image/jpeg',.85));
       const path=`${miId||'novos'}/${Date.now()}-${Math.random().toString(36).slice(2,7)}.jpg`;
       const{error}=await sb.storage.from('fotos').upload(path,blob,{contentType:'image/jpeg',upsert:false});if(error)throw error;
       miFotos.push(sb.storage.from('fotos').getPublicUrl(path).data.publicUrl);ok++;rGal()}
@@ -846,7 +872,7 @@ async function gerarPdf(i){
   const ESC=[20,20,20],CLARO=[244,242,238],LAR=[240,122,26],BRANCO=[255,255,255],CINZA=[150,150,150],TXT=[60,60,60];
   const logo=await logoImg(),lr=logo.height/logo.width;
   const fotos=[];let falhas=0;
-  for(let k=0;k<(i.fotos||[]).length;k++){msg(`Preparando fotos ${k+1} de ${i.fotos.length}…`);const cv=await fotoComMarca(i.fotos[k],1600,true);if(cv)fotos.push(cv);else falhas++}
+  for(let k=0;k<(i.fotos||[]).length;k++){msg(`Preparando fotos ${k+1} de ${i.fotos.length}…`);const cv=await fotoComMarca(i.fotos[k],1600,true,true);if(cv)fotos.push(cv);else falhas++}
   msg('Montando o PDF…');
   const corte=(cv,ar)=>{const c=document.createElement('canvas'),cw=cv.width,ch=cv.height;let sw=cw,sh=cw/ar;if(sh>ch){sh=ch;sw=ch*ar}
     c.width=Math.round(sw);c.height=Math.round(sh);c.getContext('2d').drawImage(cv,(cw-sw)/2,(ch-sh)/2,sw,sh,0,0,sw,sh);return c.toDataURL('image/jpeg',.82)};
