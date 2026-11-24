@@ -406,3 +406,59 @@ drop policy if exists "fotos_envio" on storage.objects;
 create policy "fotos_envio" on storage.objects for insert to authenticated with check (bucket_id = 'fotos' and public.is_ativo());
 drop policy if exists "fotos_apagar" on storage.objects;
 create policy "fotos_apagar" on storage.objects for delete to authenticated using (bucket_id = 'fotos' and (owner = auth.uid() or public.is_diretor()));
+-- ROLETA DE LEADS
+create table if not exists public.campanhas (
+  id uuid primary key default gen_random_uuid(),
+  nome text not null,
+  origem text,
+  ativa boolean not null default true,
+  participantes uuid[] not null default '{}',
+  pausados uuid[] not null default '{}',
+  ponteiro int not null default 0,
+  criado_por uuid references public.profiles(id) default auth.uid(),
+  criado timestamptz not null default now()
+);
+alter table public.campanhas enable row level security;
+grant select, insert, update, delete on public.campanhas to authenticated;
+drop policy if exists cp_sel on public.campanhas;
+create policy cp_sel on public.campanhas for select to authenticated using (public.is_diretor() or public.is_gerente() or public.is_secretaria());
+drop policy if exists cp_ins on public.campanhas;
+create policy cp_ins on public.campanhas for insert to authenticated with check (public.is_diretor() or public.is_gerente() or public.is_secretaria());
+drop policy if exists cp_upd on public.campanhas;
+create policy cp_upd on public.campanhas for update to authenticated
+  using (public.is_diretor() or public.is_gerente() or public.is_secretaria())
+  with check (public.is_diretor() or public.is_gerente() or public.is_secretaria());
+drop policy if exists cp_del on public.campanhas;
+create policy cp_del on public.campanhas for delete to authenticated using (public.is_diretor());
+
+alter table public.leads add column if not exists campanha_id uuid references public.campanhas(id) on delete set null;
+
+-- Sorteia o próximo da fila (em rodízio, pulando pausados e bloqueados) e já cria o lead para ele
+create or replace function public.distribuir_lead(cid uuid, p_nome text, p_tel text default null, p_busca text default null, p_obs text default null)
+returns json language plpgsql security definer set search_path = public as $$
+declare c public.campanhas; lista uuid[]; n int; escolhido uuid; novo uuid;
+begin
+  if not (public.is_diretor() or public.is_gerente() or public.is_secretaria()) then raise exception 'Sem permissão para distribuir leads'; end if;
+  select * into c from public.campanhas where id = cid for update;
+  if not found then raise exception 'Campanha não encontrada'; end if;
+  if not c.ativa then raise exception 'Campanha pausada'; end if;
+  select array_agg(x order by ord) into lista
+    from unnest(c.participantes) with ordinality as t(x, ord)
+    join public.profiles p on p.id = t.x
+   where p.ativo and not (t.x = any(c.pausados));
+  n := coalesce(array_length(lista, 1), 0);
+  if n = 0 then raise exception 'Nenhum corretor ativo na fila desta campanha'; end if;
+  escolhido := lista[(c.ponteiro % n) + 1];
+  update public.campanhas set ponteiro = ponteiro + 1 where id = cid;
+  insert into public.leads (corretor_id, nome, tel, etapa, origem, busca, data, campanha_id, notas)
+  values (escolhido, coalesce(nullif(trim(p_nome), ''), 'Lead sem nome'), p_tel, 'novo', coalesce(c.origem, c.nome), p_busca, current_date, cid,
+          jsonb_build_array(jsonb_build_object('t', '🎯 Recebido pela roleta: ' || c.nome || coalesce(E'\n' || nullif(p_obs, ''), ''),
+                                               'em', floor(extract(epoch from now()) * 1000), 'por', 'Roleta')))
+  returning id into novo;
+  return json_build_object('lead_id', novo, 'corretor_id', escolhido);
+end $$;
+grant execute on function public.distribuir_lead(uuid, text, text, text, text) to authenticated;
+
+do $$ begin
+  begin alter publication supabase_realtime add table public.campanhas; exception when others then null; end;
+end $$;

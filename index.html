@@ -257,6 +257,7 @@ td.num,th.num{text-align:right;white-space:nowrap}
       <button data-v="vendas">🏆 Vendas</button>
       <button data-v="imoveis">🏠 Imóveis</button>
       <button data-v="capt" id="navCap" class="hide">🔍 Captação</button>
+      <button data-v="roleta" id="navRol" class="hide">🎯 Roleta</button>
       <button data-v="fin" id="navFin">💰 Financeiro</button>
       <button data-v="equipe" id="navEq">👥 Equipe</button>
     </nav>
@@ -269,6 +270,9 @@ td.num,th.num{text-align:right;white-space:nowrap}
 
   <!-- DASHBOARD -->
   <section class="view" id="vDash"><div class="dash" id="dash"></div></section>
+
+  <!-- ROLETA -->
+  <section class="view hide" id="vRoleta"><div class="dash" id="roleta"></div></section>
 
   <!-- CAPTAÇÃO -->
   <section class="view hide" id="vCapt">
@@ -370,6 +374,7 @@ td.num,th.num{text-align:right;white-space:nowrap}
     <div class="f full"><label>O que o cliente procura</label><input id="mlBusca" placeholder="Ex.: Apto 3 quartos na Alameda Jundiaí até R$ 600 mil"></div>
     <div class="f"><label>Imóvel de interesse</label><select id="mlImovel"></select></div>
     <div class="f" id="mlCorBox"><label>Corretor responsável</label><select id="mlCorretor"></select></div>
+    <div class="f hide" id="mlRolBox"><label>🎯 Distribuir pela roleta</label><select id="mlRoleta"></select></div>
     <div class="notes"><h4>Observações</h4><div id="mlNotas"></div>
       <div class="nadd"><textarea id="mlNText" placeholder="Ex.: Quer a casa Y ou a Z. Pediu pra ligar depois do dia 25."></textarea><button class="btn" id="mlNAdd">Adicionar</button></div></div>
   </div>
@@ -489,7 +494,7 @@ function toast(t){const el=$('toast');el.textContent=t;el.style.display='block';
 function falha(e){console.error(e);toast('Erro: '+(e?.message||'não consegui salvar'))}
 
 /* ================= ESTADO ================= */
-const S={capt:[],cFiltro:'todos',cBusca:'',me:null,perfis:[],leads:[],imoveis:[],fin:[],vendas:[],vAno:new Date().getFullYear(),vMes:'',vCor:'',view:'dash',lFiltro:'todos',lBusca:'',lCor:'',fTab:'comissoes'};
+const S={camp:[],capt:[],cFiltro:'todos',cBusca:'',me:null,perfis:[],leads:[],imoveis:[],fin:[],vendas:[],vAno:new Date().getFullYear(),vMes:'',vCor:'',view:'dash',lFiltro:'todos',lBusca:'',lCor:'',fTab:'comissoes'};
 const isDir=()=>S.me?.papel==='diretor';
 const isGer=()=>S.me?.papel==='gerente';
 const isSec=()=>S.me?.papel==='secretaria';
@@ -538,30 +543,30 @@ async function iniciar(){
   S.me=me; tela('app');
   $('meNome').textContent=me.nome; $('mePapel').textContent=me.master?'Diretor geral':({diretor:'Diretor',gerente:'Gerente',secretaria:'Secretária',corretor:'Corretor'})[me.papel]||'Corretor';
   $('navEq').classList.toggle('hide',!isDir());
-  $('navFin').textContent=isDir()?'💰 Financeiro':isGer()?'💰 Comissões da equipe':'💰 Minhas comissões';$('navFin').classList.toggle('hide',isSec());$('navCap').classList.toggle('hide',!podeCaptar());
+  $('navFin').textContent=isDir()?'💰 Financeiro':isGer()?'💰 Comissões da equipe':'💰 Minhas comissões';$('navFin').classList.toggle('hide',isSec());$('navRol').classList.toggle('hide',!gestor());$('navCap').classList.toggle('hide',!podeCaptar());
   $('fNovo').classList.toggle('hide',!isDir());
   $('mlCorBox').classList.toggle('hide',!gestor());
   $('miDel').classList.toggle('hide',!isDir());$('iMelhorar').classList.toggle('hide',!isDir());
   await carregarTudo(); tempoReal(); setInterval(carregarTudo,120000);
 }
 async function carregar(t){
-  const ord={profiles:'nome',leads:'data',imoveis:'criado',financeiro:'vencimento',vendas:'data',captacoes:'criado'}[t];
+  const ord={profiles:'nome',leads:'data',imoveis:'criado',financeiro:'vencimento',vendas:'data',captacoes:'criado',campanhas:'criado'}[t];
   let data=[],de=0;
   while(true){const r=await sb.from(t).select('*').order(ord,{ascending:t!=='imoveis',nullsFirst:false}).order('id').range(de,de+999);
     if(r.error){console.error(r.error);return} data=data.concat(r.data); if(r.data.length<1000)break; de+=1000}
-  ({profiles:()=>S.perfis=data,leads:()=>S.leads=data,imoveis:()=>S.imoveis=data,financeiro:()=>S.fin=data,vendas:()=>S.vendas=data,captacoes:()=>S.capt=data})[t]();
+  ({profiles:()=>S.perfis=data,leads:()=>S.leads=data,imoveis:()=>S.imoveis=data,financeiro:()=>S.fin=data,vendas:()=>S.vendas=data,captacoes:()=>S.capt=data,campanhas:()=>S.camp=data})[t]();
 }
-async function carregarTudo(){await Promise.all(['profiles','leads','imoveis','financeiro','vendas','captacoes'].map(carregar));render()}
+async function carregarTudo(){await Promise.all(['profiles','leads','imoveis','financeiro','vendas','captacoes','campanhas'].map(carregar));render()}
 const pend={};
 function tempoReal(){
-  ['leads','imoveis','financeiro','profiles','vendas','captacoes'].forEach(t=>{
+  ['leads','imoveis','financeiro','profiles','vendas','captacoes','campanhas'].forEach(t=>{
     sb.channel('rt-'+t).on('postgres_changes',{event:'*',schema:'public',table:t},()=>{
       clearTimeout(pend[t]);pend[t]=setTimeout(async()=>{await carregar(t);render()},400)}).subscribe();
   });
 }
 
 /* ================= NAVEGAÇÃO ================= */
-const VIEWS={capt:'vCapt',dash:'vDash',vendas:'vVendas',leads:'vLeads',imoveis:'vImoveis',fin:'vFin',equipe:'vEquipe'};
+const VIEWS={roleta:'vRoleta',capt:'vCapt',dash:'vDash',vendas:'vVendas',leads:'vLeads',imoveis:'vImoveis',fin:'vFin',equipe:'vEquipe'};
 function irPara(v){S.view=v;document.querySelectorAll('#nav button').forEach(x=>x.classList.toggle('on',x.dataset.v===v));
   Object.values(VIEWS).forEach(id=>$(id).classList.toggle('hide',id!==VIEWS[v]));render()}
 $('nav').onclick=e=>{const b=e.target.closest('[data-v]');if(b)irPara(b.dataset.v)};
@@ -570,7 +575,7 @@ $('tela').onclick=async()=>{try{document.fullscreenElement?await document.exitFu
 function tick(){const d=new Date();$('hora').textContent=pad(d.getHours())+':'+pad(d.getMinutes());$('data').textContent=d.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long'})}
 let dia=hojeISO();setInterval(()=>{tick();if(hojeISO()!==dia){dia=hojeISO();render()}},15000);tick();
 function render(){if(!S.me)return;
-  if(S.view==='capt')rCapt();else if(S.view==='dash')rDash();else if(S.view==='vendas')rVendas();else if(S.view==='leads')rLeads();else if(S.view==='imoveis')rImoveis();else if(S.view==='fin')rFin();else rEquipe()}
+  if(S.view==='roleta')rRoleta();else if(S.view==='capt')rCapt();else if(S.view==='dash')rDash();else if(S.view==='vendas')rVendas();else if(S.view==='leads')rLeads();else if(S.view==='imoveis')rImoveis();else if(S.view==='fin')rFin();else rEquipe()}
 
 /* ================= LEADS ================= */
 function stLead(c){if(FINAIS.includes(c.etapa)||!c.data)return null;const n=diff(c.data);return n<0?'late':n===0?'today':n<=3?'soon':'fut'}
@@ -624,6 +629,9 @@ function abrirLead(id){const c=id?S.leads.find(x=>x.id===id):null;if(id&&!c)retu
   $('mlImovel').innerHTML='<option value="">— nenhum —</option>'+opts(S.imoveis.map(i=>({v:i.id,t:(i.codigo?i.codigo+' · ':'')+i.titulo})),c?.imovel_id||'');
   $('mlCorretor').innerHTML=opts(equipe().map(p=>({v:p.id,t:p.nome})),c?.corretor_id||S.lCor||S.me.id);
   const dig=(c?.tel||'').replace(/\D/g,'');$('mlWa').classList.toggle('hide',dig.length<10);if(dig.length>=10)$('mlWa').href='https://wa.me/'+(dig.length<=11?'55'+dig:dig);
+  const cs=S.camp.filter(x=>x.ativa);$('mlRolBox').classList.toggle('hide',!!c||!gestor()||!cs.length);
+  $('mlRoleta').innerHTML='<option value="">Não — escolher o corretor na mão</option>'+opts(cs.map(x=>({v:x.id,t:x.nome})),'');
+  $('mlRoleta').onchange=()=>$('mlCorBox').classList.toggle('hide',!!$('mlRoleta').value||!gestor());
   notasR();abrirOv('ovLead',!!c);setTimeout(()=>(c?$('mlNText'):$('mlNome')).focus(),60)}
 function notasR(){$('mlNotas').innerHTML=mlNotas.length?mlNotas.map((n,i)=>`<div class="nitem">${esc(n.t)}<small>${new Date(n.em).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}${n.por?' · '+esc(n.por):''}</small><button class="del" data-i="${i}">✕</button></div>`).join(''):'<div style="color:#777;font-size:13px;margin-bottom:8px">Nenhuma observação ainda.</div>'}
 $('mlNotas').onclick=e=>{const b=e.target.closest('.del');if(b){mlNotas.splice(+b.dataset.i,1);notasR()}};
@@ -634,6 +642,8 @@ $('mlSave').onclick=async()=>{const nome=$('mlNome').value.trim();if(!nome){$('m
   const row={nome,tel:$('mlTel').value.trim(),etapa:$('mlEtapa').value,origem:$('mlOrigem').value||null,data:$('mlData').value||null,hora:$('mlHora').value||null,
     busca:$('mlBusca').value.trim()||null,notas:mlNotas,imovel_id:$('mlImovel').value||null,atualizado:new Date().toISOString()};
   if(gestor())row.corretor_id=$('mlCorretor').value;else if(!mlId)row.corretor_id=S.me.id;
+  if(!mlId&&$('mlRoleta').value){const r=await distribuir($('mlRoleta').value,{nome,tel:row.tel,busca:row.busca,obs:mlNotas.map(n=>n.t).join('\n')});
+    if(r){fecharOv();await carregar('leads');render();mostrarDistribuidos([r])}return}
   const antes=mlId?S.leads.find(x=>x.id===mlId)?.corretor_id:null;
   const virouFechado=row.etapa==='fechado'&&!(mlId&&vendaDoLead(mlId));
   if(virouFechado)row.etapa=mlId?(S.leads.find(x=>x.id===mlId)?.etapa||'retornar'):'retornar';
@@ -1231,6 +1241,63 @@ function lancamentosDaVenda(v){const P=partesDaVenda(v);if(P.diretor||!P.total)r
     if(P.ger)L.push({tipo:'pagar',categoria:'Comissão de corretor',descricao:`Repasse gestão ${ng} (${fmtPct(P.pctGer)}) – ${ref}`.slice(0,160),valor:P.ger,vencimento:v.data,corretor_id:P.gerente_id,imovel_id:v.imovel_id,venda_id:v.id,obs:resumo})}
   return L}
 const finDaVenda=v=>S.fin.filter(f=>f.venda_id===v.id||(!f.venda_id&&v.imovel_id&&f.imovel_id===v.imovel_id&&/Comiss|Repasse/.test(f.descricao)&&(f.descricao||'').includes(v.cliente||'§')));
+
+/* ================= ROLETA DE LEADS ================= */
+async function distribuir(cid,{nome,tel,busca,obs}){
+  const{data,error}=await sb.rpc('distribuir_lead',{cid,p_nome:nome,p_tel:tel||null,p_busca:busca||null,p_obs:obs||null});
+  if(error){falha(error);return null}return{...data,nome,tel,busca}}
+function mostrarDistribuidos(lista){
+  const por={};lista.forEach(l=>{(por[l.corretor_id]=por[l.corretor_id]||[]).push(l)});
+  sheet(lista.length===1?'🎯 Lead distribuído':`🎯 ${lista.length} leads distribuídos`,Object.entries(por).map(([cid,ls])=>{const p=S.perfis.find(x=>x.id===cid);
+    const txt=`🔔 *${ls.length===1?'Novo lead':ls.length+' novos leads'} para você – Ipiranga*\n\n`+ls.map(l=>`👤 *${l.nome}*${l.tel?'\n📱 '+l.tel+'\n💬 '+waLink(l.tel):''}${l.busca?'\n🔎 '+l.busca:''}`).join('\n\n')+`\n\n⏱️ Chame agora — lead quente responde nos primeiros minutos.\nCRM: ${APP_URL}`;
+    return`<div class="nitem" style="display:flex;align-items:center;gap:10px;white-space:normal"><div style="flex:1"><b>${esc(p?.nome||'—')}</b><br><small style="color:var(--muted)">${ls.map(l=>esc(l.nome)).join(', ')}</small></div>
+      ${p?.whatsapp?`<a class="btnwa" style="padding:9px 14px" href="${esc(waLink(p.whatsapp,txt))}" target="_blank" rel="noopener">💬 Avisar</a>`:'<small style="color:var(--amber)">sem WhatsApp</small>'}</div>`}).join(''),null)}
+function rRoleta(){
+  const hoje=hojeISO(),C=S.camp;
+  $('roleta').innerHTML=`<div class="dhead" style="justify-content:space-between"><div><h1>🎯 Roleta de leads</h1><p>Cada campanha tem sua fila. O lead que entra vai para o próximo corretor, em rodízio.</p></div>
+    <button class="btn" id="rNova">+ Nova campanha</button></div>
+   ${C.length?`<div class="grid">${C.map(c=>{const parts=(c.participantes||[]).map(id=>S.perfis.find(p=>p.id===id)).filter(Boolean),ativos_=parts.filter(p=>p.ativo&&!(c.pausados||[]).includes(p.id));
+      const prox=ativos_.length?ativos_[(c.ponteiro||0)%ativos_.length]:null,L=S.leads.filter(l=>l.campanha_id===c.id),Lh=L.filter(l=>(l.criado||'').startsWith(hoje));
+      return`<div class="icard" style="cursor:default;border-top-color:${c.ativa?'#22c55e':'#6b7280'}">
+       <div class="cod">${esc(c.origem||'Campanha')} · ${c.ativa?'<b style="color:#86efac">ATIVA</b>':'<b>PAUSADA</b>'}</div><h4>${esc(c.nome)}</h4>
+       <div class="spec">${L.length} leads no total · ${Lh.length} hoje</div>
+       <div style="margin:10px 0 6px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Fila de atendimento</div>
+       <div style="display:flex;flex-direction:column;gap:5px">${parts.map(p=>{const pa=(c.pausados||[]).includes(p.id)||!p.ativo,n=L.filter(l=>l.corretor_id===p.id).length;
+         return`<div style="display:flex;align-items:center;gap:8px;background:${prox&&prox.id===p.id?'#14532d':'var(--panel2)'};border-radius:8px;padding:6px 10px;opacity:${pa?.5:1}">
+          <span style="flex:1">${prox&&prox.id===p.id?'👉 ':''}${esc(p.nome)}${prox&&prox.id===p.id?' <small style="color:#86efac">· próximo</small>':''}</span><small style="color:var(--muted)">${n} lead${n===1?'':'s'}</small>
+          <button class="btn ghost sm" data-rpausa="${c.id}|${p.id}" title="${pa?'Voltar para a fila':'Tirar da fila (folga, férias)'}">${pa?'▶':'⏸'}</button></div>`}).join('')||'<small style="color:var(--amber)">Nenhum participante</small>'}</div>
+       <div class="qa" style="margin-top:12px"><button data-rlead="${c.id}" ${c.ativa?'':'disabled'}>+ Lead</button><button data-rcolar="${c.id}" ${c.ativa?'':'disabled'}>📥 Colar vários</button><button data-redit="${c.id}">⚙️</button></div></div>`}).join('')}</div>`
+   :'<div class="empty">Nenhuma campanha ainda. Clique em <b>+ Nova campanha</b>, dê um nome (ex.: "Meta Ads – Riade") e escolha quem atende.</div>'}`}
+$('roleta').addEventListener('click',async e=>{const t=e.target;
+  if(t.id==='rNova')return editarCampanha(null);
+  const ed=t.closest('[data-redit]');if(ed)return editarCampanha(ed.dataset.redit);
+  const pz=t.closest('[data-rpausa]');if(pz){const[cid,pid]=pz.dataset.rpausa.split('|'),c=S.camp.find(x=>x.id===cid),ps=new Set(c.pausados||[]);ps.has(pid)?ps.delete(pid):ps.add(pid);
+    const{error}=await sb.from('campanhas').update({pausados:[...ps]}).eq('id',cid);if(error)return falha(error);c.pausados=[...ps];return rRoleta()}
+  const nl=t.closest('[data-rlead]');if(nl){abrirLead(null);$('mlRoleta').value=nl.dataset.rlead;$('mlRoleta').onchange();return}
+  const cl=t.closest('[data-rcolar]');if(cl)return colarLeads(cl.dataset.rcolar)});
+function editarCampanha(id){const c=id?S.camp.find(x=>x.id===id):{ativa:true,participantes:[]};
+  const elegiveis=equipe().filter(p=>p.papel!=='secretaria');
+  sheet(id?'⚙️ Campanha':'🎯 Nova campanha',`<div class="f"><label>Nome da campanha</label><input id="rcNome" value="${esc(c.nome||'')}" placeholder="Ex.: Meta Ads – Riade novembro"></div>
+   <div class="f"><label>Origem dos leads</label><select id="rcOrig">${opts(['Meta Ads','Instagram','Google Ads','Portal','WhatsApp','Indicação','Outro'],c.origem||'Meta Ads')}</select></div>
+   <div class="f"><label>Quem atende (ordem da fila)</label><div style="display:flex;flex-direction:column;gap:4px">${elegiveis.map(p=>`<label class="chk" style="margin:0"><input type="checkbox" data-rp="${p.id}" ${(c.participantes||[]).includes(p.id)?'checked':''}> ${esc(p.nome)} <small style="color:var(--muted)">· ${({diretor:'Diretor',gerente:'Gerente',corretor:'Corretor'})[p.papel]||''}</small></label>`).join('')}</div></div>
+   <label class="chk"><input type="checkbox" id="rcAtiva" ${c.ativa?'checked':''}> Campanha ativa (recebendo leads)</label>
+   ${id&&isDir()?`<button class="btn danger sm" id="rcDel" type="button">Excluir campanha</button>`:''}`,async()=>{
+    const nome=$('rcNome').value.trim();if(!nome){toast('Dê um nome à campanha');return false}
+    const participantes=[...document.querySelectorAll('[data-rp]')].filter(x=>x.checked).map(x=>x.dataset.rp);if(!participantes.length){toast('Escolha ao menos um corretor');return false}
+    const row={nome,origem:$('rcOrig').value,participantes,ativa:$('rcAtiva').checked};
+    const{error}=id?await sb.from('campanhas').update(row).eq('id',id):await sb.from('campanhas').insert(row);if(error){falha(error);return false}
+    toast('Campanha salva ✓');await carregar('campanhas');rRoleta();return true},id?'Salvar':'Criar campanha');
+  if($('rcDel'))$('rcDel').onclick=async()=>{const{error}=await sb.from('campanhas').delete().eq('id',id);if(error)return falha(error);fecharOv();await carregar('campanhas');rRoleta();toast('Campanha excluída')}}
+function lerLinhasLeads(t){return t.split(/\r?\n/).map(l=>l.trim()).filter(Boolean).filter(l=>!/^(full_?name|nome)[,;\t]/i.test(l)).map(l=>{
+  const tel=(l.match(/\(?\+?\d[\d\s().-]{8,}\d/)||[''])[0];let resto=l.replace(tel,'').replace(/[\t;,|]+/g,' ').replace(/\S+@\S+/g,'').replace(/\s+/g,' ').trim();
+  return{nome:resto||'Lead sem nome',tel:tel.replace(/^\+?55\s?/,'').trim()}}).filter(x=>x.nome||x.tel)}
+function colarLeads(cid){const c=S.camp.find(x=>x.id===cid);
+  sheet('📥 Colar leads · '+c.nome,`<p style="margin:0 0 8px;color:var(--muted);font-size:13px">Um lead por linha: <b>nome e telefone</b> (pode colar direto da planilha do Meta Ads ou de uma lista do WhatsApp).</p>
+    <textarea id="rcTxt" style="width:100%;min-height:200px;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:10px 12px" placeholder="Maria Souza, (62) 99999-1111\nJoão Lima 62 98888-2222"></textarea><div id="rcPrev" class="geomsg"></div>`,async()=>{
+    const L=lerLinhasLeads($('rcTxt').value);if(!L.length){toast('Cole ao menos um lead');return false}
+    const feitos=[];for(const l of L){$('rcPrev').textContent=`Distribuindo ${feitos.length+1} de ${L.length}…`;const r=await distribuir(cid,l);if(!r)break;feitos.push(r)}
+    await carregar('leads');await carregar('campanhas');rRoleta();if(feitos.length)setTimeout(()=>mostrarDistribuidos(feitos),50);return true},'Distribuir');
+  $('rcTxt').oninput=()=>{const L=lerLinhasLeads($('rcTxt').value);$('rcPrev').textContent=L.length?`${L.length} lead${L.length>1?'s':''} reconhecido${L.length>1?'s':''}: ${L.slice(0,3).map(l=>l.nome+(l.tel?' ('+l.tel+')':'')).join(', ')}${L.length>3?'…':''}`:''}}
 
 /* ================= CAPTAÇÃO ================= */
 const ETAPAS_CAP=[
