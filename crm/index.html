@@ -391,11 +391,11 @@ td.num,th.num{text-align:right;white-space:nowrap}
   <div class="mbody">
     <div class="f"><label>Nome</label><input id="mlNome"></div>
     <div class="f"><label>WhatsApp / Telefone</label><input id="mlTel" placeholder="(62) 9 9999-9999"></div>
-    <div class="f"><label>Etapa</label><select id="mlEtapa"></select></div>
+    <div class="f" id="mlEtapaBox"><label>Etapa</label><select id="mlEtapa"></select></div>
     <div class="f"><label>Origem</label><select id="mlOrigem"><option value="">—</option><option>WhatsApp</option><option>Instagram</option><option>Meta Ads</option><option>Indicação</option><option>Portal</option><option>Placa</option><option>Ligação</option><option>Outro</option></select></div>
-    <div class="f"><label id="mlDataL">Próximo contato</label><input type="date" id="mlData">
+    <div class="f" id="mlDataBox"><label id="mlDataL">Próximo contato</label><input type="date" id="mlData">
       <div class="quick" id="mlQuick"><button data-d="0">Hoje</button><button data-d="1">Amanhã</button><button data-d="3">+3d</button><button data-d="7">+1 sem</button><button data-d="15">+15d</button><button data-d="30">+30d</button><button data-d="x">Limpar</button></div></div>
-    <div class="f"><label>Horário</label><input type="time" id="mlHora"></div>
+    <div class="f" id="mlHoraBox"><label>Horário</label><input type="time" id="mlHora"></div>
     <div class="f full"><label>O que o cliente procura</label><input id="mlBusca" placeholder="Ex.: Apto 3 quartos na Alameda Jundiaí até R$ 600 mil"></div>
     <div class="f"><label>Imóvel de interesse</label><select id="mlImovel"></select></div>
     <div class="f" id="mlCorBox"><label>Corretor responsável</label><select id="mlCorretor"></select></div>
@@ -687,7 +687,8 @@ $('mlQuick').onclick=e=>{const b=e.target.closest('button');if(b)$('mlData').val
 $('lNovo').onclick=()=>abrirLead(null);
 function abrirLead(id){const c=id?S.leads.find(x=>x.id===id):null;if(id&&!c)return;marcarAtendido(c);mlId=c?.id||null;mlNotas=[...(c?.notas||[])];
   $('mlTitle').textContent=c?c.nome:'Novo lead';$('mlNome').value=c?.nome||'';$('mlTel').value=c?.tel||'';
-  $('mlEtapa').value=c?.etapa||(S.lFiltro!=='todos'?S.lFiltro:'novo');$('mlEtapa').onchange();
+  $('mlEtapa').value=c?.etapa||'novo';$('mlEtapa').onchange();
+  ['mlEtapaBox','mlDataBox','mlHoraBox'].forEach(id=>$(id).classList.toggle('hide',!c)); // cadastro novo: só os dados; entra em Novo lead
   $('mlOrigem').value=c?.origem||'';$('mlData').value=c?.data||'';$('mlHora').value=c?.hora||'';$('mlBusca').value=c?.busca||'';$('mlNText').value='';
   $('mlImovel').innerHTML='<option value="">— nenhum —</option>'+opts(S.imoveis.map(i=>({v:i.id,t:(i.codigo?i.codigo+' · ':'')+i.titulo})),c?.imovel_id||'');
   $('mlCorretor').innerHTML=opts(equipe().map(p=>({v:p.id,t:p.nome})),c?.corretor_id||S.lCor||S.me.id);
