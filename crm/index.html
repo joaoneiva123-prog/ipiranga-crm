@@ -612,10 +612,16 @@ function ajustarAlturas(){document.querySelectorAll('.view:not(.hide) .board, .v
 addEventListener('resize',()=>{clearTimeout(S._rz);S._rz=setTimeout(ajustarAlturas,150)});
 
 /* ================= TEMPO DE ATENDIMENTO (SLA) ================= */
-const SLA_ALERTA=15,SLA_REPASSE=30;
-function minSemAtend(c){if(!c||c.etapa!=='novo'||c.atendido_em||!c.atribuido_em)return null;return Math.max(0,Math.floor((Date.now()-new Date(c.atribuido_em))/60000))}
+const SLA_ALERTA=10,SLA_REPASSE=15;
+// minutos em horário útil (seg a sex, 8h às 19h, horário de Brasília) entre dois instantes
+function minUteis(a,b){const OFF=3*3600e3,H=3600e3;let t=a-OFF,fim=b-OFF,tot=0,i=0;
+  while(t<fim&&i++<400){const d=new Date(t),d0=Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()),w=d.getUTCDay();
+    if(w>=1&&w<=5){const s=Math.max(t,d0+8*H),e=Math.min(fim,d0+19*H);if(e>s)tot+=e-s}t=d0+24*H}
+  return Math.floor(tot/60000)}
+function emHorarioUtil(){const d=new Date(Date.now()-3*3600e3),w=d.getUTCDay(),h=d.getUTCHours();return w>=1&&w<=5&&h>=8&&h<19}
+function minSemAtend(c){if(!c||c.etapa!=='novo'||c.atendido_em||!c.atribuido_em)return null;return minUteis(new Date(c.atribuido_em).getTime(),Date.now())}
 const fmtMin=m=>m<60?m+' min':m<1440?Math.floor(m/60)+'h'+(m%60?String(m%60).padStart(2,'0'):''):Math.floor(m/1440)+' dia'+(m>=2880?'s':'');
-function slaPill(c){const m=minSemAtend(c);if(m==null)return'';return m>=SLA_ALERTA?`<span class="pill red">⏰ ${fmtMin(m)} sem atendimento</span>`:`<span class="pill amber">🆕 há ${fmtMin(m)}</span>`}
+function slaPill(c){const m=minSemAtend(c);if(m==null)return'';if(m===0&&!emHorarioUtil())return'<span class="pill amber">🌙 conta a partir das 8h (dia útil)</span>';return m>=SLA_ALERTA?`<span class="pill red">⏰ ${fmtMin(m)} sem atendimento</span>`:`<span class="pill amber">🆕 há ${fmtMin(m)}</span>`}
 async function marcarAtendido(c){if(!c||c.corretor_id!==S.me.id||c.atendido_em)return;c.atendido_em=new Date().toISOString();
   const{error}=await sb.from('leads').update({atendido_em:c.atendido_em}).eq('id',c.id);if(error)console.warn(error)}
 function rSla(){const box=S.view==='leads'?$('slaLeads'):S.view==='dash'?$('slaDash'):null;['slaLeads','slaDash'].forEach(id=>{const e=$(id);if(e&&e!==box)e.innerHTML=''});if(!box)return;
@@ -624,7 +630,7 @@ function rSla(){const box=S.view==='leads'?$('slaLeads'):S.view==='dash'?$('slaD
   if(!P.length){box.innerHTML=alerta?`<div style="margin:10px 22px 0">${alerta}</div>`:'';return}
   const meus=P.filter(x=>x.c.corretor_id===S.me.id),outros=P.filter(x=>x.c.corretor_id!==S.me.id);
   box.innerHTML=`<div class="slabox">${meus.length?`<div class="slatit">⏰ ${meus.length===1?'1 lead esperando você':meus.length+' leads esperando você'} · atenda agora</div>
-    <div class="slasub">Quem chama nos primeiros minutos converte muito mais. ${meus.some(x=>x.c.campanha_id)?`Lead da roleta sem atendimento em ${SLA_REPASSE} min vai para o próximo corretor.`:''}</div>
+    <div class="slasub">Quem chama nos primeiros minutos converte muito mais. ${meus.some(x=>x.c.campanha_id)?`Lead da roleta sem atendimento em ${SLA_REPASSE} min (seg a sex, 8h às 19h) vai para o próximo corretor.`:''}</div>
     <div class="slalist">${meus.map(({c,m})=>`<div class="tchip ${m>=SLA_ALERTA?'late':'today'}" data-lead="${c.id}"><b>${esc(c.nome)}</b><small>${esc(c.tel||'')} · há ${fmtMin(m)}</small></div>`).join('')}</div>`:''}
    ${outros.length?`<div class="slatit" ${meus.length?'style="margin-top:12px"':''}>🚨 ${outros.length} lead${outros.length>1?'s':''} da equipe sem atendimento há mais de ${SLA_ALERTA} min</div>
     <div class="slalist">${outros.map(({c,m})=>{const p=S.perfis.find(x=>x.id===c.corretor_id);const msg=`⏰ ${p?p.nome.split(' ')[0]:''}, o lead *${c.nome}*${c.tel?' ('+c.tel+')':''} está há ${fmtMin(m)} sem atendimento. Chame agora!\nCRM: ${APP_URL}`;
