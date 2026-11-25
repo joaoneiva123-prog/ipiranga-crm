@@ -12,7 +12,7 @@ const fotoNossa=u=>/\/storage\/v1\/object\/public\/fotos\//.test(u||'');
 const slug=t=>String(t||'imovel').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,80)||'imovel';
 const linkImovel=i=>`${BASE}imovel.html?c=${encodeURIComponent(i.codigo||i.id)}&${slug(i.titulo)}`;
 const wa=msg=>`https://wa.me/${CFG.WHATS}?text=${encodeURIComponent(msg)}`;
-const specs=i=>[i.area&&`📐 ${String(i.area).replace('.',',')} m²`,i.quartos&&`🛏️ ${i.quartos}`,i.suites&&`🛁 ${i.suites}`,i.vagas&&`🚗 ${i.vagas}`].filter(Boolean);
+const specs=i=>[i.area&&`📐 ${String(i.area).replace('.',',')} m²`,i.area_terreno&&!/lote|terreno/i.test(i.tipo||'')&&`🌳 ${String(i.area_terreno).replace('.',',')} m² terreno`,i.quartos&&`🛏️ ${i.quartos}`,i.suites&&`🛁 ${i.suites}`,i.vagas&&`🚗 ${i.vagas}`].filter(Boolean);
 function card(i){const f=(i.fotos||[])[0];
   return`<a class="card" href="${linkImovel(i)}"><div class="foto ${f&&!fotoNossa(f)?'wm':''}">${f?`<img loading="lazy" src="${esc(f)}" alt="${esc(i.titulo)}">`:''}<span class="tag">${i.finalidade==='Aluguel'?'Aluguel':'Venda'}${i.tipo?' · '+esc(i.tipo):''}</span></div>
    <div class="info"><div class="preco">${i.valor?brl(i.valor):'Consulte'}</div><div class="tit">${esc(i.titulo)}</div>

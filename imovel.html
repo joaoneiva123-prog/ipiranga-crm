@@ -30,7 +30,7 @@ const cod=new URLSearchParams(location.search).get('c');
   document.querySelector('meta[name=description]').content=`${i.tipo||'Imóvel'} ${i.finalidade==='Aluguel'?'para alugar':'à venda'} em ${loc}. ${(i.descricao||'').slice(0,140)}`;
   const g=k=>F[k]?`<div class="g ${fotoNossa(F[k])?'':'wm'}" data-k="${k}"><img src="${esc(F[k])}" alt="${esc(i.titulo)} – foto ${k+1}"${k?' loading="lazy"':''}>${k===0&&F.length>1?`<button class="ver">📷 Ver ${F.length} fotos</button>`:''}</div>`:'';
   const msg=`Olá! Tenho interesse no imóvel cód. ${i.codigo||''} – ${i.titulo}. ${location.href.split('&')[0]}`;
-  const C=[[i.area&&String(i.area).replace('.',',')+' m²','Área'],[i.quartos,'Quartos'],[i.suites,'Suítes'],[i.vagas,'Vagas'],[i.tipo,'Tipo']].filter(x=>x[0]!=null&&x[0]!=='');
+  const lote=/lote|terreno/i.test(i.tipo||'');const C=[[i.area&&String(i.area).replace('.',',')+' m²',lote?'Área do terreno':'Área construída'],[!lote&&i.area_terreno&&String(i.area_terreno).replace('.',',')+' m²','Terreno'],[i.quartos,'Quartos'],[i.suites,'Suítes'],[i.vagas,'Vagas'],[i.tipo,'Tipo']].filter(x=>x[0]!=null&&x[0]!==''&&x[0]!==false);
   const sim=T.filter(x=>x.id!==i.id&&(x.finalidade||'Venda')===(i.finalidade||'Venda')&&(x.bairro===i.bairro||x.tipo===i.tipo)).slice(0,3);
   $('conteudo').innerHTML=`<div class="migalha"><a href="${BASE}">Início</a> › <a href="${BASE}?fin=${i.finalidade==='Aluguel'?'Aluguel':'Venda'}#imoveis">${i.finalidade==='Aluguel'?'Alugar':'Comprar'}</a> › ${esc(i.tipo||'Imóvel')}</div>
    ${F.length?`<div class="galeria">${g(0)}${g(1)}${g(2)}</div>`:''}

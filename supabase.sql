@@ -507,3 +507,11 @@ grant execute on function public.site_lead(text, text, text, text, text) to anon
 -- IMPORTAÇÃO DE VENDAS DA JETIMOB (evita duplicar)
 alter table public.vendas add column if not exists origem_id text;
 create unique index if not exists vendas_origem_id_key on public.vendas (origem_id);
+
+-- ÁREA DO TERRENO (além da área construída)
+alter table public.imoveis add column if not exists area_terreno numeric;
+create or replace view public.site_imoveis as
+  select id, codigo, titulo, tipo, finalidade, bairro, condominio, regiao, valor, quartos, suites, vagas, area,
+         descricao, fotos, round(lat::numeric, 3)::float8 as lat, round(lng::numeric, 3)::float8 as lng, criado, area_terreno
+    from public.imoveis where status = 'Disponível';
+grant select on public.site_imoveis to anon, authenticated;
