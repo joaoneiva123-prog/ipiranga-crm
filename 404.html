@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8"><title>Ipiranga Gestão Imobiliária</title>
+<script>
+// Mantém funcionando os links antigos do site (Jetimob) e atalhos
+(function(){var p=location.pathname,base=p.indexOf('/ipiranga-crm/')===0?'/ipiranga-crm/':'/',r=p.slice(base.length);
+  var m=r.match(/^imovel\/[^\/]*\/?([A-Za-z0-9-]+)\/?$/);
+  if(m)return location.replace(base+'imovel.html?c='+encodeURIComponent(m[1]));
+  if(/^crm/i.test(r))return location.replace(base+'crm/'+location.search+location.hash);
+  if(/^(venda|comprar)/i.test(r))return location.replace(base+'?fin=Venda#imoveis');
+  if(/^(aluguel|locacao|alugar)/i.test(r))return location.replace(base+'?fin=Aluguel#imoveis');
+  if(/^(contato|institucional)/i.test(r))return location.replace(base+'#'+(/^contato/i.test(r)?'contato':'sobre'));
+  location.replace(base);})();
+</script></head><body>Redirecionando…</body></html>

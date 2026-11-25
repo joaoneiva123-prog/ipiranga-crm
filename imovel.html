@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Imóvel · Ipiranga Gestão Imobiliária</title>
+<meta name="description" content="Imóvel em Anápolis-GO · Ipiranga Gestão Imobiliária">
+<link rel="icon" href="assets/icon-192.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,600;9..40,700;9..40,800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="assets/site.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+</head>
+<body>
+<div id="topo"></div>
+<main class="wrap" id="conteudo"><p style="padding:60px 0;color:#7a746e">Carregando imóvel…</p></main>
+<div class="lb" id="lb"><img id="lbImg" alt=""><button class="x" id="lbX" aria-label="Fechar">×</button><button class="ant" id="lbA" aria-label="Anterior">‹</button><button class="prox" id="lbP" aria-label="Próxima">›</button><span class="cont" id="lbC"></span></div>
+<div id="rodape"></div>
+<script src="assets/site.js"></script>
+<script>
+$('topo').innerHTML=topo();$('rodape').innerHTML=rodape();cookies();
+const cod=new URLSearchParams(location.search).get('c');
+(async()=>{
+  const T=await imoveis(),i=T.find(x=>String(x.codigo)===cod||x.id===cod);
+  if(!i){$('conteudo').innerHTML=`<div class="vazio" style="margin:60px 0">Este imóvel não está mais disponível. <a href="${BASE}#imoveis">Veja outros imóveis</a> ou <a href="${BASE}#contato">fale com a gente</a>.</div>`;return}
+  const F=i.fotos||[],loc=[i.condominio,i.bairro,'Anápolis-GO'].filter(Boolean).join(' · ');
+  document.title=`${i.titulo} · ${i.valor?brl(i.valor)+' · ':''}Ipiranga`;
+  document.querySelector('meta[name=description]').content=`${i.tipo||'Imóvel'} ${i.finalidade==='Aluguel'?'para alugar':'à venda'} em ${loc}. ${(i.descricao||'').slice(0,140)}`;
+  const g=k=>F[k]?`<div class="g ${fotoNossa(F[k])?'':'wm'}" data-k="${k}"><img src="${esc(F[k])}" alt="${esc(i.titulo)} – foto ${k+1}"${k?' loading="lazy"':''}>${k===0&&F.length>1?`<button class="ver">📷 Ver ${F.length} fotos</button>`:''}</div>`:'';
+  const msg=`Olá! Tenho interesse no imóvel cód. ${i.codigo||''} – ${i.titulo}. ${location.href.split('&')[0]}`;
+  const C=[[i.area&&String(i.area).replace('.',',')+' m²','Área'],[i.quartos,'Quartos'],[i.suites,'Suítes'],[i.vagas,'Vagas'],[i.tipo,'Tipo']].filter(x=>x[0]!=null&&x[0]!=='');
+  const sim=T.filter(x=>x.id!==i.id&&(x.finalidade||'Venda')===(i.finalidade||'Venda')&&(x.bairro===i.bairro||x.tipo===i.tipo)).slice(0,3);
+  $('conteudo').innerHTML=`<div class="migalha"><a href="${BASE}">Início</a> › <a href="${BASE}?fin=${i.finalidade==='Aluguel'?'Aluguel':'Venda'}#imoveis">${i.finalidade==='Aluguel'?'Alugar':'Comprar'}</a> › ${esc(i.tipo||'Imóvel')}</div>
+   ${F.length?`<div class="galeria">${g(0)}${g(1)}${g(2)}</div>`:''}
+   <div class="det"><div>
+     <span class="loc">Cód. ${esc(i.codigo||'')} · ${i.finalidade==='Aluguel'?'Para alugar':'À venda'}</span>
+     <h1>${esc(i.titulo)}</h1><div class="loc">📍 ${esc(loc)}</div>
+     <div class="preco">${i.valor?brl(i.valor):'Valor sob consulta'}</div>
+     <div class="carac">${C.map(c=>`<div><b>${esc(c[0])}</b><small>${c[1]}</small></div>`).join('')}</div>
+     ${i.descricao?`<h3>Descrição</h3><div class="desc">${esc(i.descricao)}</div>`:''}
+     ${i.lat?'<h3 style="margin-top:28px">Localização</h3><div id="mapa"></div><p style="color:#7a746e;font-size:13px">Localização aproximada.</p>':''}
+   </div>
+   <aside class="lateral"><h3>Gostou deste imóvel?</h3><p style="color:#7a746e;margin:0 0 14px">Fale com um corretor da Ipiranga agora.</p>
+     <a class="btn wa" style="width:100%;margin-bottom:14px" href="${wa(msg)}" target="_blank" rel="noopener">💬 Falar no WhatsApp</a>
+     <form class="form" id="fImovel"><input name="nome" placeholder="Seu nome*" required><input name="tel" placeholder="Telefone com DDD*" inputmode="tel" required>
+      <input name="email" placeholder="E-mail" type="email"><textarea name="msg">Olá! Tenho interesse neste imóvel (cód. ${esc(i.codigo||'')}). Gostaria de mais informações.</textarea>
+      <input name="empresa" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">
+      <button class="btn" type="submit">Enviar</button><div class="retorno"></div></form>
+   </aside></div>
+   ${sim.length?`<section style="padding-bottom:60px"><h2 style="color:#262626">Imóveis parecidos</h2><div class="grade">${sim.map(card).join('')}</div></section>`:''}`;
+  $('fImovel').onsubmit=e=>{e.preventDefault();enviarLead(e.target,{codigo:String(i.codigo||i.id)})};
+  if(i.lat&&window.L){const m=L.map('mapa',{scrollWheelZoom:false}).setView([i.lat,i.lng],15);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(m);
+    L.circle([i.lat,i.lng],{radius:180,color:'#B15F28',fillOpacity:.2}).addTo(m)}
+  // galeria em tela cheia
+  let k=0;const abre=n=>{k=(n+F.length)%F.length;$('lbImg').src=F[k];$('lbC').textContent=`${k+1} / ${F.length}`;$('lb').classList.add('on')};
+  document.querySelector('.galeria')?.addEventListener('click',e=>{const d=e.target.closest('[data-k]');if(d)abre(+d.dataset.k)});
+  $('lbX').onclick=()=>$('lb').classList.remove('on');$('lbA').onclick=()=>abre(k-1);$('lbP').onclick=()=>abre(k+1);
+  document.addEventListener('keydown',e=>{if(!$('lb').classList.contains('on'))return;if(e.key==='Escape')$('lb').classList.remove('on');if(e.key==='ArrowLeft')abre(k-1);if(e.key==='ArrowRight')abre(k+1)});
+})();
+</script>
+</body>
+</html>

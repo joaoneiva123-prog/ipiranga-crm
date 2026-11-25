@@ -466,3 +466,40 @@ end $$;
 -- ---------- CAPTADOR DO IMÓVEL ----------
 alter table public.imoveis add column if not exists captador_id uuid references public.profiles(id) on delete set null;
 alter table public.imoveis add column if not exists captador_nome text;
+-- SITE PÚBLICO: vitrine de imóveis disponíveis (sem dados do proprietário) + formulário que vira lead
+create or replace view public.site_imoveis as
+  select id, codigo, titulo, tipo, finalidade, bairro, condominio, regiao, valor, quartos, suites, vagas, area,
+         descricao, fotos, round(lat::numeric, 3)::float8 as lat, round(lng::numeric, 3)::float8 as lng, criado
+    from public.imoveis
+   where status = 'Disponível';
+grant select on public.site_imoveis to anon, authenticated;
+
+create or replace function public.site_lead(p_nome text, p_tel text, p_email text default null, p_msg text default null, p_codigo text default null)
+returns json language plpgsql security definer set search_path = public as $$
+declare v_imo public.imoveis; v_camp public.campanhas; lista uuid[]; n int; v_cor uuid; v_id uuid; v_txt text;
+begin
+  if length(coalesce(trim(p_nome), '')) < 2 or length(regexp_replace(coalesce(p_tel, ''), '\D', '', 'g')) < 10 then raise exception 'dados inválidos'; end if;
+  if length(coalesce(p_msg, '')) > 2000 or length(p_nome) > 120 then raise exception 'texto muito longo'; end if;
+  -- evita duplicado/robô: mesmo telefone nos últimos 10 minutos
+  if exists (select 1 from public.leads where regexp_replace(coalesce(tel, ''), '\D', '', 'g') = regexp_replace(p_tel, '\D', '', 'g') and criado > now() - interval '10 minutes')
+    then return json_build_object('ok', true, 'repetido', true); end if;
+  if p_codigo is not null then select * into v_imo from public.imoveis where codigo = p_codigo or id::text = p_codigo limit 1; end if;
+  -- roleta da campanha de origem "Site" (se existir e estiver ativa); senão vai para o diretor geral
+  select * into v_camp from public.campanhas where ativa and (origem = 'Site' or nome ilike 'site%') order by criado limit 1 for update;
+  if found then
+    select array_agg(x order by ord) into lista from unnest(v_camp.participantes) with ordinality as t(x, ord)
+      join public.profiles p on p.id = t.x where p.ativo and not (t.x = any(v_camp.pausados));
+    n := coalesce(array_length(lista, 1), 0);
+    if n > 0 then v_cor := lista[(v_camp.ponteiro % n) + 1]; update public.campanhas set ponteiro = ponteiro + 1 where id = v_camp.id; end if;
+  end if;
+  if v_cor is null then select id into v_cor from public.profiles where master and ativo order by criado limit 1; end if;
+  if v_cor is null then select id into v_cor from public.profiles where papel = 'diretor' and ativo order by criado limit 1; end if;
+  v_txt := '🌐 Contato pelo site' || coalesce(E'\nImóvel: ' || v_imo.codigo || ' – ' || v_imo.titulo, '') || coalesce(E'\nE-mail: ' || nullif(p_email, ''), '') || coalesce(E'\n' || nullif(p_msg, ''), '');
+  insert into public.leads (corretor_id, nome, tel, etapa, origem, busca, data, imovel_id, campanha_id, notas)
+  values (v_cor, trim(p_nome), trim(p_tel), 'novo', 'Site', v_imo.titulo, current_date, v_imo.id, v_camp.id,
+          jsonb_build_array(jsonb_build_object('t', v_txt, 'em', floor(extract(epoch from now()) * 1000), 'por', 'Site')))
+  returning id into v_id;
+  return json_build_object('ok', true);
+end $$;
+revoke all on function public.site_lead(text, text, text, text, text) from public;
+grant execute on function public.site_lead(text, text, text, text, text) to anon, authenticated;
