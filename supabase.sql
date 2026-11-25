@@ -503,3 +503,7 @@ begin
 end $$;
 revoke all on function public.site_lead(text, text, text, text, text) from public;
 grant execute on function public.site_lead(text, text, text, text, text) to anon, authenticated;
+
+-- IMPORTAÇÃO DE VENDAS DA JETIMOB (evita duplicar)
+alter table public.vendas add column if not exists origem_id text;
+create unique index if not exists vendas_origem_id_key on public.vendas (origem_id);

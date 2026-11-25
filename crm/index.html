@@ -1614,19 +1614,48 @@ function rImport(){
 async function importar(file){
   const msg=t=>{S.impMsg=t;const el=$('impMsg');if(el)el.textContent=t};
   let d;try{d=JSON.parse(await file.text())}catch(e){return msg('Arquivo inválido')}
-  if(d.formato!=='ipiranga-import-1')return msg('Esse não é o arquivo de importação certo');
+  if(!/^ipiranga-import-/.test(d.formato||''))return msg('Esse não é o arquivo de importação certo');
+  const r={novosImo:0,atuImo:0,novosLead:0,vendas:0,pulVendas:0};
   try{
-    for(let k=0;k<d.imoveis.length;k+=50){msg(`Imóveis ${k}/${d.imoveis.length}…`);
-      const{error}=await sb.from('imoveis').upsert(d.imoveis.slice(k,k+50),{onConflict:'origem_id',ignoreDuplicates:true});if(error)throw error}
-    msg('Atualizando localização…');
-    const geo=d.imoveis.filter(i=>i.lat!=null||i.cep).map(i=>({origem_id:i.origem_id,titulo:i.titulo,cep:i.cep,condominio:i.condominio,bairro:i.bairro,regiao:i.regiao,lat:i.lat,lng:i.lng}));
-    for(let k=0;k<geo.length;k+=50){const{error}=await sb.from('imoveis').upsert(geo.slice(k,k+50),{onConflict:'origem_id'});if(error)throw error}
-    const mapa={};let de=0;while(true){const{data,error}=await sb.from('imoveis').select('id,origem_id').not('origem_id','is',null).range(de,de+999);if(error)throw error;data.forEach(x=>mapa[x.origem_id]=x.id);if(data.length<1000)break;de+=1000}
-    const L=d.leads.map(({imovel_origem,...l})=>({...l,corretor_id:S.me.id,imovel_id:imovel_origem?mapa[imovel_origem]||null:null}));
-    for(let k=0;k<L.length;k+=100){msg(`Leads ${k}/${L.length}…`);
+    // ---- IMÓVEIS: novos entram completos; existentes só recebem o que mudou na Jetimob sem apagar o que foi ajustado no CRM
+    const atual={};let de=0;while(true){const{data,error}=await sb.from('imoveis').select('id,origem_id,status,valor,lat,fotos').not('origem_id','is',null).range(de,de+999);if(error)throw error;data.forEach(x=>atual[x.origem_id]=x);if(data.length<1000)break;de+=1000}
+    const novos=d.imoveis.filter(i=>!atual[i.origem_id]);
+    for(let k=0;k<novos.length;k+=50){msg(`Imóveis novos ${k}/${novos.length}…`);
+      const{error}=await sb.from('imoveis').upsert(novos.slice(k,k+50),{onConflict:'origem_id',ignoreDuplicates:true});if(error)throw error}
+    r.novosImo=novos.length;
+    const fechados=['Vendido','Alugado'];let n=0;
+    for(const i of d.imoveis){const a=atual[i.origem_id];if(!a)continue;const p={};
+      if(!fechados.includes(a.status)&&i.status&&i.status!==a.status)p.status=i.status;
+      if(i.valor&&+i.valor!==+a.valor)p.valor=i.valor;
+      if(a.lat==null&&i.lat!=null)Object.assign(p,{lat:i.lat,lng:i.lng,cep:i.cep,regiao:i.regiao,condominio:i.condominio});
+      if((!a.fotos||!a.fotos.length)&&i.fotos&&i.fotos.length)p.fotos=i.fotos;
+      if(Object.keys(p).length){msg(`Atualizando imóveis… ${++n}`);p.atualizado=new Date().toISOString();
+        const{error}=await sb.from('imoveis').update(p).eq('id',a.id);if(error)throw error;r.atuImo++}}
+    const mapa={};de=0;while(true){const{data,error}=await sb.from('imoveis').select('id,origem_id').not('origem_id','is',null).range(de,de+999);if(error)throw error;data.forEach(x=>mapa[x.origem_id]=x.id);if(data.length<1000)break;de+=1000}
+    // ---- LEADS: só os novos (os que já existem ficam como estão no CRM)
+    const jaLeads=new Set(S.leads.map(l=>l.origem_id).filter(Boolean));
+    const L=d.leads.filter(l=>!jaLeads.has(l.origem_id)).map(({imovel_origem,...l})=>({...l,corretor_id:S.me.id,imovel_id:imovel_origem?mapa[imovel_origem]||null:null}));
+    for(let k=0;k<L.length;k+=100){msg(`Leads novos ${k}/${L.length}…`);
       const{error}=await sb.from('leads').upsert(L.slice(k,k+100),{onConflict:'origem_id',ignoreDuplicates:true});if(error)throw error}
-    msg('✓ Importação concluída');await carregarTudo();toast(`Importados ${d.imoveis.length} imóveis e ${L.length} leads`);
-  }catch(e){console.error(e);msg('Erro: '+(e.message||e)+(/column|origem_id|fotos|descricao|lat|cep|regiao|condominio/.test(e.message||'')?' — rode o arquivo import-1-preparar.sql no Supabase':''))}
+    r.novosLead=L.length;
+    // ---- VENDAS conferidas (data e valor reais), sem duplicar as lançadas à mão
+    if(d.vendas&&d.vendas.length){await carregar('leads');
+      const{data:VS,error:ve}=await sb.from('vendas').select('id,origem_id,imovel_id,lead_id');if(ve)throw ve;
+      const jaO=new Set(VS.map(v=>v.origem_id).filter(Boolean)),jaI=new Set(VS.map(v=>v.imovel_id).filter(Boolean)),jaL=new Set(VS.map(v=>v.lead_id).filter(Boolean));
+      const porPrimeiro=nome=>{const f=(nome||'').toLowerCase().split(' ')[0];return S.perfis.find(p=>p.ativo&&p.nome.toLowerCase().split(' ')[0]===f)};
+      for(const v of d.vendas){const lead=S.leads.find(l=>l.origem_id===v.origem_id);const imovel_id=v.imovel_origem?mapa[v.imovel_origem]||null:null;
+        if(jaO.has(v.origem_id)||(imovel_id&&jaI.has(imovel_id))||(lead&&jaL.has(lead.id))){r.pulVendas++;continue}
+        const corretor_id=(v.corretor_nome&&porPrimeiro(v.corretor_nome)?.id)||lead?.corretor_id||S.me.id;
+        const comissao=Math.round(v.valor*COMISSAO_PADRAO)/100;const dv=divisao(corretor_id,comissao);
+        const row={origem_id:v.origem_id,lead_id:lead?.id||null,imovel_id,imovel_desc:imovel_id?null:(v.imovel_desc||null),corretor_id,cliente:v.cliente,tipo:v.tipo||'Venda',
+          valor:v.valor,data:v.data,comissao_pct:COMISSAO_PADRAO,comissao,obs:v.obs||null,
+          comissao_corretor:dv.diretor?null:dv.corr,pct_corretor:dv.diretor?null:dv.pct,comissao_gerente:dv.diretor?null:dv.ger,gerente_id:dv.gerente?.id||null,comissao_ipiranga:dv.diretor?null:dv.ipi,comissao_diretor:dv.diretor};
+        msg(`Vendas ${r.vendas+1}…`);const{error}=await sb.from('vendas').insert(row);if(error)throw error;r.vendas++;jaO.add(v.origem_id);if(imovel_id)jaI.add(imovel_id);
+        if(imovel_id)await sb.from('imoveis').update({status:row.tipo==='Locação'?'Alugado':'Vendido'}).eq('id',imovel_id);
+        if(lead)await sb.from('leads').update({etapa:'fechado',imovel_id:imovel_id||lead.imovel_id||null}).eq('id',lead.id)}}
+    const t=`✓ ${r.novosImo} imóveis novos, ${r.atuImo} atualizados, ${r.novosLead} leads novos${d.vendas?`, ${r.vendas} vendas (${r.pulVendas} já existiam)`:''}`;
+    msg(t);await carregarTudo();toast(t);
+  }catch(e){console.error(e);msg('Erro: '+(e.message||e)+(/origem_id/.test(e.message||'')?' — rode no Supabase o SQL de importação de vendas':''))}
 }
 function rEquipe(){if(!isDir())return;const P=[...S.perfis].sort((a,b)=>(a.ativo===b.ativo?0:a.ativo?1:-1)||a.nome.localeCompare(b.nome));
   $('eList').innerHTML=rImport()+`<table><thead><tr><th>Nome</th><th class="hidem">E-mail</th><th>WhatsApp</th><th>CRECI definitivo</th><th>Papel</th><th>Acesso</th><th class="num hidem">Leads ativos</th></tr></thead><tbody>${P.map(p=>{const eu=p.id===S.me.id;
