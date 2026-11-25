@@ -1620,7 +1620,7 @@ async function importar(file){
   const r={novosImo:0,atuImo:0,novosLead:0,vendas:0,pulVendas:0};
   try{
     // ---- IMÓVEIS: novos entram completos; existentes só recebem o que mudou na Jetimob sem apagar o que foi ajustado no CRM
-    const atual={};let de=0;while(true){const{data,error}=await sb.from('imoveis').select('id,origem_id,status,valor,lat,cep,condominio,regiao,fotos,area_terreno').not('origem_id','is',null).range(de,de+999);if(error)throw error;data.forEach(x=>atual[x.origem_id]=x);if(data.length<1000)break;de+=1000}
+    const atual={};let de=0;while(true){const{data,error}=await sb.from('imoveis').select('id,origem_id,tipo,status,valor,lat,cep,condominio,regiao,fotos,area,area_terreno').not('origem_id','is',null).range(de,de+999);if(error)throw error;data.forEach(x=>atual[x.origem_id]=x);if(data.length<1000)break;de+=1000}
     const novos=d.imoveis.filter(i=>!atual[i.origem_id]);
     for(let k=0;k<novos.length;k+=50){msg(`Imóveis novos ${k}/${novos.length}…`);
       const{error}=await sb.from('imoveis').upsert(novos.slice(k,k+50),{onConflict:'origem_id',ignoreDuplicates:true});if(error)throw error}
@@ -1630,7 +1630,9 @@ async function importar(file){
       if(!fechados.includes(a.status)&&i.status&&i.status!==a.status)p.status=i.status;
       if(!a.valor&&i.valor)p.valor=i.valor;
       if(a.lat==null&&!a.cep&&i.lat!=null)Object.assign(p,{lat:i.lat,lng:i.lng,regiao:a.regiao||i.regiao});
-      if(!a.cep&&i.cep&&a.lat==null)p.cep=i.cep;if(!a.condominio&&i.condominio)p.condominio=i.condominio;if(a.area_terreno==null&&i.area_terreno)p.area_terreno=i.area_terreno;
+      if(!a.cep&&i.cep&&a.lat==null)p.cep=i.cep;if(!a.condominio&&i.condominio)p.condominio=i.condominio;if(a.area_terreno==null&&i.area_terreno){p.area_terreno=i.area_terreno;
+        // importação antiga pôs o terreno no campo de área construída quando a Jetimob não tinha a construída
+        if(!/lote|terreno/i.test(a.tipo||'')&&i.area==null&&a.area!=null&&+a.area===+i.area_terreno)p.area=null}
       if((!a.fotos||!a.fotos.length)&&i.fotos&&i.fotos.length)p.fotos=i.fotos;
       if(Object.keys(p).length){msg(`Atualizando imóveis… ${++n}`);p.atualizado=new Date().toISOString();
         const{error}=await sb.from('imoveis').update(p).eq('id',a.id);if(error)throw error;r.atuImo++}}
