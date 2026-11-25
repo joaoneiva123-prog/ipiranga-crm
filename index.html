@@ -325,6 +325,7 @@ td.num,th.num{text-align:right;white-space:nowrap}
       <input class="sel" id="iVmax" inputmode="numeric" placeholder="Valor máx. R$" style="width:130px">
       <select class="sel" id="iReg"><option value="">Todas as regiões</option></select>
       <select class="sel" id="iCond"><option value="">Todos os condomínios</option></select>
+      <select class="sel" id="iCapt"><option value="">Todos os captadores</option></select>
       <div class="perto"><input class="sel" id="iPerto" placeholder="📍 Perto de: CEP ou endereço"><select class="sel" id="iRaio"><option value="1">1 km</option><option value="2" selected>2 km</option><option value="5">5 km</option><option value="10">10 km</option></select><button class="btn ghost sm" id="iPertoOk">Buscar</button></div>
       <button class="btn ghost sm" id="iLimpar" type="button">✕ Limpar filtros</button>
       <button class="btn ghost sm hide" id="iMelhorar" type="button">✨ Melhorar fotos antigas</button>
@@ -410,6 +411,8 @@ td.num,th.num{text-align:right;white-space:nowrap}
     <div class="f s2"></div>
     <div class="f"><label>Proprietário</label><input id="miProp"></div>
     <div class="f"><label>Tel. proprietário</label><input id="miPropTel"></div>
+    <div class="f"><label>Captador do imóvel</label><select id="miCapt"></select></div>
+    <div class="f hide" id="miCaptOutroBox"><label>Nome do captador</label><input id="miCaptNome" placeholder="Parceiro ou corretor externo"></div>
     <div class="f full" id="miGalBox"><label>Fotos <span style="text-transform:none;letter-spacing:0;font-weight:500">· a 1ª é a capa · a marca da Ipiranga entra automaticamente</span></label><div class="gal" id="miGal"></div>
       <input type="file" id="miUp" accept="image/*" multiple class="hide"><label class="chk" style="margin:6px 0 0"><input type="checkbox" id="miMelhorar" checked> ✨ Melhorar fotos automaticamente (clarear, cor, contraste e nitidez)</label><div class="geomsg" id="miUpMsg"></div></div>
     <div class="f full"><label>Descrição do anúncio</label><textarea id="miDesc"></textarea></div>
@@ -795,7 +798,7 @@ $('iRaio').onchange=rImoveis;
 function rMapaGeral(I){if(!L_OK()){$('iMapa').innerHTML='<div class="empty">Mapa indisponível</div>';return}
   if(!gMapa){gMapa=L.map('iMapa').setView(CENTRO,13);tiles(gMapa);const z=()=>$('iMapa').classList.toggle('low',gMapa.getZoom()<15);gMapa.on('zoomend',z);z()}
   if(gLayer)gMapa.removeLayer(gLayer);gLayer=L.layerGroup().addTo(gMapa);const pts=[];
-  I.filter(i=>i.lat!=null).forEach(i=>{if(distKm(CENTRO[0],CENTRO[1],i.lat,i.lng)<25)pts.push([i.lat,i.lng]);
+  I.filter(i=>i.lat!=null&&!['Vendido','Alugado'].includes(i.status)).forEach(i=>{if(distKm(CENTRO[0],CENTRO[1],i.lat,i.lng)<25)pts.push([i.lat,i.lng]);
     L.marker([i.lat,i.lng],{icon:pinIcon(i.status!=='Disponível',i.valor||null),riseOnHover:true}).addTo(gLayer).bindPopup(`<b>${esc(i.titulo)}</b><br>${esc([i.condominio,i.bairro].filter(Boolean).join(' · '))}<br><span style="color:#d2783a;font-weight:800">${i.valor?brl(i.valor):''}</span><br><a href="#" data-imo-pop="${i.id}">Abrir imóvel →</a>`)});
   if(perto){L.circle([perto.lat,perto.lng],{radius:+$('iRaio').value*1000,color:'#d2783a',weight:2,fillOpacity:.08}).addTo(gLayer);pts.push([perto.lat,perto.lng])}
   setTimeout(()=>{gMapa.invalidateSize();if(pts.length)gMapa.fitBounds(pts,{padding:[30,30],maxZoom:16})},100)}
@@ -992,18 +995,20 @@ async function gerarPdf(i){
 
 /* ================= IMÓVEIS ================= */
 $('iTipo').innerHTML+=opts(TIPOS);$('iStatus').innerHTML+=opts(STATUS);$('miTipo').innerHTML=opts(TIPOS);$('miStatus').innerHTML=opts(STATUS);
-['iBusca','iTipo','iStatus','iFin','iReg','iCond','iVmin','iVmax'].forEach(id=>$(id).addEventListener('input',rImoveis));
+['iBusca','iTipo','iStatus','iFin','iReg','iCond','iCapt','iVmin','iVmax'].forEach(id=>$(id).addEventListener('input',rImoveis));
+$('miCapt').addEventListener('change',()=>$('miCaptOutroBox').classList.toggle('hide',$('miCapt').value!=='__outro'));
 function vmoney(el){const d=soDig(el.value);el.value=d?(+d).toLocaleString('pt-BR'):''}
 ['iVmin','iVmax'].forEach(id=>$(id).addEventListener('input',e=>vmoney(e.target)));
-$('iLimpar').onclick=()=>{['iBusca','iTipo','iStatus','iFin','iReg','iCond','iVmin','iVmax','iPerto'].forEach(id=>$(id).value='');$('iRaio').value='2';perto=null;rImoveis()};
+$('iLimpar').onclick=()=>{['iBusca','iTipo','iStatus','iFin','iReg','iCond','iCapt','iVmin','iVmax','iPerto'].forEach(id=>$(id).value='');$('iRaio').value='2';perto=null;rImoveis()};
 $('iReg').innerHTML+=opts(REGIOES);$('miReg').innerHTML='<option value="">—</option>'+opts(REGIOES);
 function rImoveis(){const q=$('iBusca').value.trim().toLowerCase(),t=$('iTipo').value,s=$('iStatus').value,f=$('iFin').value,rg=$('iReg').value,cd=$('iCond').value;
   const conds=[...new Set(S.imoveis.map(i=>i.condominio).filter(Boolean))].sort();
   $('iCond').innerHTML='<option value="">Todos os condomínios</option>'+opts(conds,cd);
+  {const v=$('iCapt').value;$('iCapt').innerHTML='<option value="">Todos os captadores</option>'+opts(ativos().filter(p=>S.imoveis.some(i=>i.captador_id===p.id)).map(p=>({v:p.id,t:p.nome})),v)}
   $('dlCond').innerHTML=conds.map(c=>`<option value="${esc(c)}">`).join('');
   $('dlBairro').innerHTML=[...new Set(S.imoveis.map(i=>i.bairro).filter(Boolean))].sort().map(c=>`<option value="${esc(c)}">`).join('');
   const vmin=+soDig($('iVmin').value)||0,vmax=+soDig($('iVmax').value)||0;
-  let I=S.imoveis.filter(i=>(!vmin||(+i.valor||0)>=vmin)&&(!vmax||(i.valor!=null&&+i.valor<=vmax))&&(!t||i.tipo===t)&&(!s||i.status===s)&&(!f||i.finalidade===f)&&(!rg||i.regiao===rg)&&(!cd||i.condominio===cd)&&(!q||[i.titulo,i.codigo,i.bairro,i.condominio,i.regiao,i.cep,i.endereco,i.obs,i.proprietario].join(' ').toLowerCase().includes(q)));
+  let I=S.imoveis.filter(i=>(!vmin||(+i.valor||0)>=vmin)&&(!vmax||(i.valor!=null&&+i.valor<=vmax))&&(!t||i.tipo===t)&&(!s||i.status===s)&&(!f||i.finalidade===f)&&(!rg||i.regiao===rg)&&(!cd||i.condominio===cd)&&(!$('iCapt').value||i.captador_id===$('iCapt').value)&&(!q||[i.titulo,i.codigo,i.bairro,i.condominio,i.regiao,i.cep,i.endereco,i.obs,i.proprietario].join(' ').toLowerCase().includes(q)));
   if(perto){const R=+$('iRaio').value;I=I.filter(i=>i.lat!=null&&distKm(perto.lat,perto.lng,i.lat,i.lng)<=R).map(i=>({...i,_d:distKm(perto.lat,perto.lng,i.lat,i.lng)})).sort((a,b)=>a._d-b._d)}
   $('iLista').classList.toggle('hide',modoMapa);$('iMapa').classList.toggle('hide',!modoMapa);if(modoMapa)rMapaGeral(I);
   $('iTotal').textContent=S.imoveis.length;$('iDisp').textContent=S.imoveis.filter(i=>i.status==='Disponível').length;
@@ -1012,6 +1017,7 @@ function rImoveis(){const q=$('iBusca').value.trim().toLowerCase(),t=$('iTipo').
     const spec=[i.quartos!=null&&i.quartos+' qts',i.suites&&i.suites+' suítes',i.vagas!=null&&i.vagas+' vagas',i.area&&i.area+' m²'].filter(Boolean).join(' · ');
     const f0=(i.fotos||[])[0];return`<div class="icard" data-imo="${i.id}">${f0?`<span class="wm ${fotoNossa(f0)?'baked':''}" style="margin:-14px -14px 10px"><img class="thumb" style="margin:0;width:100%" loading="lazy" src="${esc(f0)}" alt="" onerror="this.parentElement.remove()"></span>`:''}<div class="cod">${esc([i.codigo,i.tipo,i.finalidade].filter(Boolean).join(' · '))}</div><h4>${esc(i.titulo)}</h4><div class="spec">📍 ${esc([i.condominio,i.bairro].filter(Boolean).join(' · ')||'—')}${i.regiao?` · <b style="color:var(--brand2)">${esc(i.regiao)}</b>`:''}${i._d!=null?` · ${i._d.toFixed(1)} km`:''}</div>
     <div class="val">${i.valor?brl(i.valor):'Valor a definir'}</div><div class="spec">${esc(spec)}</div>
+    ${i.captador_id||i.captador_nome?`<div class="spec" style="margin-top:4px">🤝 Captação: ${esc(i.captador_id?nomeDe(i.captador_id):i.captador_nome)}</div>`:''}
     <div class="meta"><span class="pill ${cor[i.status]||''}">${esc(i.status)}</span>${nl?`<span class="pill br">🔥 ${nl} lead${nl>1?'s':''}</span>`:''}</div></div>`}).join(''):'<div class="empty" style="grid-column:1/-1">Nenhum imóvel encontrado. Clique em <b>+ Novo imóvel</b>.</div>'}
 $('iGrid').onclick=e=>{const c=e.target.closest('[data-imo]');if(c)abrirImo(c.dataset.imo)};
 $('iNovo').onclick=()=>abrirImo(null);
@@ -1021,6 +1027,8 @@ function abrirImo(id){const i=id?S.imoveis.find(x=>x.id===id):null;miId=i?.id||n
   Object.entries(m).forEach(([k,f])=>$(k).value=i?.[f]??'');$('miValor').value=i?.valor??'';
   $('miDesc').value=i?.descricao||'';$('miCep').value=i?.cep||'';$('miCep')._auto=0;$('miCond').value=i?.condominio||'';$('miReg').value=i?.regiao||'';
   miLat=i?.lat??null;miLng=i?.lng??null;$('miGeoMsg').textContent=miLat!=null?`📍 ${(+miLat).toFixed(5)}, ${(+miLng).toFixed(5)}`:'Digite o CEP para localizar no mapa';miFotos=[...(i?.fotos||[])];rGal();$('miUpMsg').textContent='';
+  $('miCapt').innerHTML='<option value="">— não informado —</option>'+opts(ativos().map(p=>({v:p.id,t:p.nome})),i?.captador_id||'')+`<option value="__outro" ${!i?.captador_id&&i?.captador_nome?'selected':''}>Outro (externo)</option>`;
+  if(!i)$('miCapt').value=S.me.id;$('miCaptNome').value=i?.captador_nome||'';$('miCaptOutroBox').classList.toggle('hide',$('miCapt').value!=='__outro');
   $('miTipo').value=i?.tipo||'Apartamento';$('miFin').value=i?.finalidade||'Venda';$('miStatus').value=i?.status||'Disponível';
   const L=i?S.leads.filter(l=>l.imovel_id===i.id):[];
   $('miLeads').innerHTML=L.length?`<label>Leads interessados</label><div class="meta">${L.map(l=>`<span class="pill br" style="cursor:pointer" data-lead="${l.id}" data-closefirst>${esc(l.nome)}</span>`).join('')}</div>`:'';
@@ -1029,6 +1037,7 @@ $('miLeads').onclick=e=>{const p=e.target.closest('[data-lead]');if(p){fecharOv(
 $('miSave').onclick=async()=>{const titulo=$('miTitulo').value.trim();if(!titulo){$('miTitulo').focus();return toast('Coloque o título do imóvel')}
   const row={titulo,codigo:$('miCodigo').value.trim()||null,tipo:$('miTipo').value,finalidade:$('miFin').value,bairro:$('miBairro').value.trim()||null,endereco:$('miEnd').value.trim()||null,
     valor:num($('miValor').value),quartos:int($('miQ').value),suites:int($('miS').value),vagas:int($('miV').value),area:num($('miA').value),status:$('miStatus').value,
+    captador_id:['','__outro'].includes($('miCapt').value)?null:$('miCapt').value,captador_nome:$('miCapt').value==='__outro'?($('miCaptNome').value.trim()||null):null,
     proprietario:$('miProp').value.trim()||null,tel_proprietario:$('miPropTel').value.trim()||null,obs:$('miObs').value.trim()||null,descricao:$('miDesc').value.trim()||null,fotos:miFotos,
     cep:$('miCep').value.trim()||null,condominio:$('miCond').value.trim()||null,regiao:$('miReg').value||regiaoDe(miLat,miLng)||null,lat:miLat,lng:miLng,atualizado:new Date().toISOString()};
   const{error}=await(miId?sb.from('imoveis').update(row).eq('id',miId):sb.from('imoveis').insert(row));if(error)return falha(error);
@@ -1455,7 +1464,7 @@ async function salvarCap(){const n=$('cpNota').value.trim();if(n)capNotas.push(n
   if(error){falha(error);return false}toast('Salvo ✓');await carregar('captacoes');rCapt();return true}
 async function cadastrarDaCaptacao(c){
   const row={titulo:c.titulo||`${c.tipo||'Imóvel'}${c.bairro?' – '+c.bairro:''}`,tipo:c.tipo||'Casa',finalidade:'Venda',bairro:c.bairro,valor:c.valor,quartos:c.quartos,area:c.area,
-    status:'Disponível',proprietario:c.proprietario,tel_proprietario:c.tel,descricao:c.texto||null,obs:`Captado ${c.link?'na OLX: '+c.link:'por prospecção'} · ${fmtD(hojeISO())} por ${S.me.nome.split(' ')[0]}`};
+    status:'Disponível',captador_id:c.responsavel_id||S.me.id,proprietario:c.proprietario,tel_proprietario:c.tel,descricao:c.texto||null,obs:`Captado ${c.link?'na OLX: '+c.link:'por prospecção'} · ${fmtD(hojeISO())} por ${S.me.nome.split(' ')[0]}`};
   const{data,error}=await sb.from('imoveis').insert(row).select();if(error)return falha(error);const imo=data&&data[0];
   await salvaCap(c.id,{status:'cadastrado',imovel_id:imo?.id||null,data:null,notas:[...(c.notas||[]),nota('🏠 Cadastrado na carteira')]});
   toast('🏠 Imóvel cadastrado! Complete CEP, fotos e dados');await carregar('imoveis');if(imo){irPara('imoveis');abrirImo(imo.id)}}

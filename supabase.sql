@@ -462,3 +462,7 @@ grant execute on function public.distribuir_lead(uuid, text, text, text, text) t
 do $$ begin
   begin alter publication supabase_realtime add table public.campanhas; exception when others then null; end;
 end $$;
+
+-- ---------- CAPTADOR DO IMÓVEL ----------
+alter table public.imoveis add column if not exists captador_id uuid references public.profiles(id) on delete set null;
+alter table public.imoveis add column if not exists captador_nome text;
