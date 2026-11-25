@@ -1618,7 +1618,7 @@ async function importar(file){
   const r={novosImo:0,atuImo:0,novosLead:0,vendas:0,pulVendas:0};
   try{
     // ---- IMÓVEIS: novos entram completos; existentes só recebem o que mudou na Jetimob sem apagar o que foi ajustado no CRM
-    const atual={};let de=0;while(true){const{data,error}=await sb.from('imoveis').select('id,origem_id,status,valor,lat,fotos').not('origem_id','is',null).range(de,de+999);if(error)throw error;data.forEach(x=>atual[x.origem_id]=x);if(data.length<1000)break;de+=1000}
+    const atual={};let de=0;while(true){const{data,error}=await sb.from('imoveis').select('id,origem_id,status,valor,lat,cep,condominio,regiao,fotos').not('origem_id','is',null).range(de,de+999);if(error)throw error;data.forEach(x=>atual[x.origem_id]=x);if(data.length<1000)break;de+=1000}
     const novos=d.imoveis.filter(i=>!atual[i.origem_id]);
     for(let k=0;k<novos.length;k+=50){msg(`Imóveis novos ${k}/${novos.length}…`);
       const{error}=await sb.from('imoveis').upsert(novos.slice(k,k+50),{onConflict:'origem_id',ignoreDuplicates:true});if(error)throw error}
@@ -1626,8 +1626,9 @@ async function importar(file){
     const fechados=['Vendido','Alugado'];let n=0;
     for(const i of d.imoveis){const a=atual[i.origem_id];if(!a)continue;const p={};
       if(!fechados.includes(a.status)&&i.status&&i.status!==a.status)p.status=i.status;
-      if(i.valor&&+i.valor!==+a.valor)p.valor=i.valor;
-      if(a.lat==null&&i.lat!=null)Object.assign(p,{lat:i.lat,lng:i.lng,cep:i.cep,regiao:i.regiao,condominio:i.condominio});
+      if(!a.valor&&i.valor)p.valor=i.valor;
+      if(a.lat==null&&!a.cep&&i.lat!=null)Object.assign(p,{lat:i.lat,lng:i.lng,regiao:a.regiao||i.regiao});
+      if(!a.cep&&i.cep&&a.lat==null)p.cep=i.cep;if(!a.condominio&&i.condominio)p.condominio=i.condominio;
       if((!a.fotos||!a.fotos.length)&&i.fotos&&i.fotos.length)p.fotos=i.fotos;
       if(Object.keys(p).length){msg(`Atualizando imóveis… ${++n}`);p.atualizado=new Date().toISOString();
         const{error}=await sb.from('imoveis').update(p).eq('id',a.id);if(error)throw error;r.atuImo++}}
