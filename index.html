@@ -1631,7 +1631,8 @@ async function importar(file){
 function rEquipe(){if(!isDir())return;const P=[...S.perfis].sort((a,b)=>(a.ativo===b.ativo?0:a.ativo?1:-1)||a.nome.localeCompare(b.nome));
   $('eList').innerHTML=rImport()+`<table><thead><tr><th>Nome</th><th class="hidem">E-mail</th><th>WhatsApp</th><th>CRECI definitivo</th><th>Papel</th><th>Acesso</th><th class="num hidem">Leads ativos</th></tr></thead><tbody>${P.map(p=>{const eu=p.id===S.me.id;
    const nl=S.leads.filter(l=>l.corretor_id===p.id&&!FINAIS.includes(l.etapa)).length;
-   return`<tr><td><b>${esc(p.nome)}</b>${eu?' <span class="pill br">você</span>':''}</td><td class="hidem">${esc(p.email||'')}</td><td><input class="sel" data-wa="${p.id}" value="${esc(p.whatsapp||'')}" placeholder="(62) 9…" style="padding:6px 8px;width:150px"></td>
+   const podeNome=eu||isMaster()||p.papel!=='diretor';
+   return`<tr><td>${podeNome?`<input class="sel" data-nome="${p.id}" value="${esc(p.nome)}" style="padding:6px 8px;width:190px;font-weight:700">`:`<b>${esc(p.nome)}</b>`}${eu?' <span class="pill br">você</span>':''}</td><td class="hidem">${esc(p.email||'')}</td><td><input class="sel" data-wa="${p.id}" value="${esc(p.whatsapp||'')}" placeholder="(62) 9…" style="padding:6px 8px;width:150px"></td>
    <td>${p.papel==='diretor'?'<span style="color:var(--muted)">—</span>':`<label class="chk" style="margin:0"><input type="checkbox" data-creci="${p.id}" ${p.creci_definitivo?'checked':''}> ${pctCorretor(p)}%</label>`}</td>
    <td>${eu||(p.papel==='diretor'&&!isMaster())?(p.master?'Diretor geral':'Diretor'):`<select class="sel" data-papel="${p.id}" style="padding:6px 8px">${opts([{v:'corretor',t:'Corretor'},{v:'gerente',t:'Gerente'},{v:'secretaria',t:'Secretária'},{v:'diretor',t:'Diretor'}],p.papel)}</select>`}</td>
    <td>${eu||(p.papel==='diretor'&&p.ativo&&!isMaster())?'<span class="pill green">Liberado</span>':p.ativo?`<button class="btn ghost sm" data-ativo="${p.id}" data-val="0">Bloquear</button>`:`<button class="btn sm" data-ativo="${p.id}" data-val="1">✓ Liberar acesso</button>`}</td>
@@ -1643,6 +1644,8 @@ $('eList').addEventListener('click',async e=>{const b=e.target.closest('[data-tr
   const{error}=await sb.from('leads').update({corretor_id:para,responsavel_origem:null}).eq('responsavel_origem',orig);
   if(error){b.disabled=false;return falha(error)}toast(`Leads de ${orig} → ${nomeDe(para)} ✓`);await carregar('leads');rEquipe()},true);
 $('eList').onchange=async e=>{if(e.target.id==='impFile'){const f=e.target.files[0];if(f)importar(f);return}
+  if(e.target.dataset.nome){const v=e.target.value.trim();if(v.length<2)return toast('Nome muito curto');const{error}=await sb.from('profiles').update({nome:v}).eq('id',e.target.dataset.nome);if(error)return falha(error);
+    if(e.target.dataset.nome===S.me.id){S.me.nome=v;$('meNome').textContent=v}toast('Nome atualizado ✓');await carregar('profiles');return}
   if(e.target.dataset.creci){const{error}=await sb.from('profiles').update({creci_definitivo:e.target.checked}).eq('id',e.target.dataset.creci);if(error)return falha(error);
     toast(e.target.checked?'CRECI definitivo · 60% ✓':'Sem CRECI definitivo · 50%');await carregar('profiles');return rEquipe()}
   if(e.target.dataset.wa){const{error}=await sb.from('profiles').update({whatsapp:e.target.value.trim()||null}).eq('id',e.target.dataset.wa);if(error)return falha(error);toast('WhatsApp salvo ✓');await carregar('profiles');if(e.target.dataset.wa===S.me.id)S.me.whatsapp=e.target.value.trim();return}
