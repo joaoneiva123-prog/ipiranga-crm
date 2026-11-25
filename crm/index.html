@@ -149,6 +149,7 @@ header .brand{cursor:pointer}
 .vfbar{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 12px;align-items:center}.vfbar input{background:#1f1f1f;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px 10px;font:inherit;font-size:13px;min-width:0}
 .vfbar>input{flex:1 1 180px}.vfbar .par{display:flex;align-items:center;gap:5px}.vfbar .par span{font-size:12px;color:var(--muted);white-space:nowrap}.vfbar .par input{width:92px}
 .vftot{margin-top:10px;font-size:13px;color:var(--muted)}
+.selbusca{margin-bottom:6px;width:100%}.selbusca.nada{border-color:var(--red)!important}
 .slabox{margin:12px 22px 0;background:#3b1717;border:1px solid #7f1d1d;border-radius:14px;padding:12px 14px}.slatit{font-weight:800}.slasub{font-size:13px;color:#fca5a5;margin:2px 0 8px}
 .slalist{display:flex;gap:8px;overflow-x:auto}.slalist .tchip{min-width:180px;flex:0 0 auto;cursor:pointer;display:block;margin:0}.slawa{display:inline-block;margin-top:6px;background:#14532d;color:#bbf7d0;border-radius:7px;padding:4px 9px;font-size:12px;font-weight:700;text-decoration:none}
 #slaDash .slabox{margin:12px 0 0}
@@ -611,6 +612,22 @@ function ajustarAlturas(){document.querySelectorAll('.view:not(.hide) .board, .v
   try{if(typeof gMapa!=='undefined'&&gMapa)gMapa.invalidateSize()}catch(_){}}
 addEventListener('resize',()=>{clearTimeout(S._rz);S._rz=setTimeout(ajustarAlturas,150)});
 
+/* ================= BUSCA DENTRO DA LISTA DE IMÓVEIS ================= */
+const normB=t=>String(t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+function buscavel(sel){if(!sel)return;let inp=sel.previousElementSibling;
+  if(!(inp&&inp.classList.contains('selbusca'))){inp=document.createElement('input');inp.className='selbusca';inp.type='search';inp.autocomplete='off';
+    inp.placeholder='🔎 Buscar: código, bairro, condomínio, título…';sel.before(inp);
+    inp.addEventListener('keydown',e=>{if(e.key==='Enter')e.preventDefault()});
+    inp.addEventListener('input',()=>{const q=normB(inp.value).split(/\s+/).filter(Boolean),cur=sel.value;
+      const extra=v=>{const i=S.imoveis.find(x=>x.id===v);return i?[i.codigo,i.titulo,i.bairro,i.condominio,i.tipo,i.regiao].join(' '):''};
+      const keep=sel._todas.filter(o=>!o.value||o.value==='__outro'||!q.length||(t=>q.every(w=>t.includes(w)))(normB(o.text+' '+extra(o.value))));
+      sel.innerHTML='';keep.forEach(o=>sel.appendChild(o.cloneNode(true)));
+      const reais=keep.filter(o=>o.value&&o.value!=='__outro');
+      sel.value=reais.find(o=>o.value===cur)?cur:(q.length&&reais.length?reais[0].value:(keep.find(o=>o.value===cur)?cur:''));
+      inp.classList.toggle('nada',q.length>0&&!reais.length);
+      if(sel.value!==cur)sel.dispatchEvent(new Event('change'))})}
+  inp.value='';inp.classList.remove('nada');sel._todas=[...sel.options].map(o=>o.cloneNode(true))}
+
 /* ================= TEMPO DE ATENDIMENTO (SLA) ================= */
 const SLA_ALERTA=10,SLA_REPASSE=15;
 // minutos em horário útil (seg a sex, 8h às 19h, horário de Brasília) entre dois instantes
@@ -696,7 +713,7 @@ function abrirLead(id){const c=id?S.leads.find(x=>x.id===id):null;if(id&&!c)retu
   $('mlEtapa').value=c?.etapa||'novo';$('mlEtapa').onchange();
   ['mlEtapaBox','mlDataBox','mlHoraBox'].forEach(id=>$(id).classList.toggle('hide',!c)); // cadastro novo: só os dados; entra em Novo lead
   $('mlOrigem').value=c?.origem||'';$('mlData').value=c?.data||'';$('mlHora').value=c?.hora||'';$('mlBusca').value=c?.busca||'';$('mlNText').value='';
-  $('mlImovel').innerHTML='<option value="">— nenhum —</option>'+opts(S.imoveis.map(i=>({v:i.id,t:(i.codigo?i.codigo+' · ':'')+i.titulo})),c?.imovel_id||'');
+  $('mlImovel').innerHTML='<option value="">— nenhum —</option>'+opts(S.imoveis.map(i=>({v:i.id,t:(i.codigo?i.codigo+' · ':'')+i.titulo})),c?.imovel_id||'');buscavel($('mlImovel'));
   $('mlCorretor').innerHTML=opts(equipe().map(p=>({v:p.id,t:p.nome})),c?.corretor_id||S.lCor||S.me.id);
   const dig=(c?.tel||'').replace(/\D/g,'');$('mlWa').classList.toggle('hide',dig.length<10);if(dig.length>=10)$('mlWa').href='https://wa.me/'+(dig.length<=11?'55'+dig:dig);
   const cs=S.camp.filter(x=>x.ativa);$('mlRolBox').classList.toggle('hide',!!c||!gestor()||!cs.length);
@@ -1206,7 +1223,7 @@ function abrirFin(id){const f=id?S.fin.find(x=>x.id===id):null;mfId=f?.id||null;
   $('mfDesc').value=f?.descricao||'';$('mfValor').value=f?.valor??'';$('mfVenc').value=f?.vencimento||hojeISO();$('mfPago').checked=!!f?.pago;$('mfObs').value=f?.obs||'';
   $('mfRep').value='1';$('mfRep').parentElement.classList.toggle('hide',!!f);
   $('mfCorretor').innerHTML='<option value="">— nenhum —</option>'+opts(ativos().map(p=>({v:p.id,t:p.nome})),f?.corretor_id||'');
-  $('mfImovel').innerHTML='<option value="">— nenhum —</option>'+opts(S.imoveis.map(i=>({v:i.id,t:(i.codigo?i.codigo+' · ':'')+i.titulo})),f?.imovel_id||'');
+  $('mfImovel').innerHTML='<option value="">— nenhum —</option>'+opts(S.imoveis.map(i=>({v:i.id,t:(i.codigo?i.codigo+' · ':'')+i.titulo})),f?.imovel_id||'');buscavel($('mfImovel'));
   abrirOv('ovFin',!!f);setTimeout(()=>$('mfDesc').focus(),60)}
 $('mfSave').onclick=async()=>{const descricao=$('mfDesc').value.trim(),valor=num($('mfValor').value);
   if(!descricao)return toast('Coloque a descrição');if(valor==null)return toast('Coloque o valor');
@@ -1570,6 +1587,7 @@ function abrirVenda({lead=null,venda=null}={}){
   $('vdValor').oninput=calc;$('vdPct').oninput=calc;if(!v.comissao)calc();
   $('vdImo').onchange=()=>{const x=$('vdImo').value;$('vdImoDesc').classList.toggle('hide',x!=='__outro');const i=S.imoveis.find(i=>i.id===x);
     if(i){if(i.valor)$('vdValor').value=i.valor;$('vdTipo').value=i.finalidade==='Aluguel'?'Locação':'Venda';calc()}};
+  buscavel($('vdImo'));
   if($('vdDel'))$('vdDel').onclick=cancelarVenda;
 }
 async function salvarVenda(){
