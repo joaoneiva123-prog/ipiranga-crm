@@ -219,6 +219,20 @@ td.num,th.num{text-align:right;white-space:nowrap}
   .mbody .f,.mbody .f.s2{grid-column:1/-1}
   table{font-size:13px}th,td{padding:8px}
   .hidem{display:none}
+  .box{overflow-x:auto}.vfbar .par{flex:1 1 100%;min-width:0;max-width:100%}.vfbar .par input{flex:1 1 0;width:0;min-width:0}.vfbar>input{flex:1 1 100%}
+}
+@media (max-width:700px){
+  html,body{overflow-x:hidden}
+  .stats{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px;overflow:visible!important}.stats .stat{min-width:0;padding:8px 6px}.stats .stat b{font-size:19px;white-space:nowrap}.stats .stat small{font-size:10.5px}
+  .toolbar>select,.toolbar>input:not(.search){flex:1 1 calc(50% - 10px);min-width:0}.toolbar>div:not(.stats){flex:1 1 100%;min-width:0;display:flex;gap:8px}.toolbar>div:not(.stats)>input{flex:1;min-width:0}
+  nav{display:grid!important;grid-template-columns:repeat(4,1fr);gap:2px;overflow:visible!important}nav button{padding:6px 2px;font-size:12px}
+  table.tcard,table.tcard tbody{display:block;background:none}table.tcard thead{display:none}
+  table.tcard tr{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
+  table.tcard td{display:block;padding:0;border:0;min-width:0;text-align:left}
+  table.tcard td[data-l]::before{content:attr(data-l);display:block;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+  table.tcard td.tc-full{grid-column:1/-1}table.tcard td.hidem{display:none}
+  table.tcard input.sel,table.tcard select.sel{width:100%!important;box-sizing:border-box}
+  table.tcard .btn{width:100%}
 }
 </style>
 </head>
@@ -1600,8 +1614,8 @@ function rVendas(){
       ${verCom?`<div class="par"><span>Comissão R$</span><input id="vfCmin" inputmode="decimal" placeholder="mín." value="${esc(S.vf.cmin)}"><input id="vfCmax" inputmode="decimal" placeholder="máx." value="${esc(S.vf.cmax)}"></div>`:''}
       ${vfAtivo()?'<button class="btn ghost sm" id="vfLimpar">✕ Limpar filtros</button>':''}
      </div>
-     ${V.length?`<table class="rk"><thead><tr>${[['data','Data'],['cliente','Cliente'],['unidade','Unidade'],['corretor','Corretor','hidem'],['tipo','Tipo'],['valor','Valor','num'],...(verCom?[['comissao','Comissão','num hidem']]:[])].map(([k,t,c])=>`<th class="${c||''}" data-vord="${k}" style="cursor:pointer;white-space:nowrap">${t}${S.vOrd.k===k?(S.vOrd.d>0?' ▲':' ▼'):''}</th>`).join('')}</tr></thead><tbody>
-     ${ordVendas([...V]).map(v=>{const i=S.imoveis.find(x=>x.id===v.imovel_id);return`<tr data-venda="${v.id}" style="cursor:pointer"><td>${fmtD(v.data)}</td><td><b>${esc(v.cliente||'—')}</b></td><td>${esc(i?nomeImovel(i):v.imovel_desc||'—')}</td><td class="hidem">${esc(nomeDe(v.corretor_id))}</td><td>${v.tipo==='Locação'?'<span class="pill blue">Locação</span>':'<span class="pill green">Venda</span>'}</td><td class="num"><b>${brl(v.valor)}</b></td>${verCom?`<td class="num hidem">${brl(v.comissao)}</td>`:''}</tr>`}).join('')}</tbody></table>`
+     ${V.length?`<table class="rk"><thead><tr>${[['data','Data'],['cliente','Cliente'],['unidade','Unidade'],['corretor','Corretor','hidem'],['tipo','Tipo','hidem'],['valor','Valor','num'],...(verCom?[['comissao','Comissão','num hidem']]:[])].map(([k,t,c])=>`<th class="${c||''}" data-vord="${k}" style="cursor:pointer;white-space:nowrap">${t}${S.vOrd.k===k?(S.vOrd.d>0?' ▲':' ▼'):''}</th>`).join('')}</tr></thead><tbody>
+     ${ordVendas([...V]).map(v=>{const i=S.imoveis.find(x=>x.id===v.imovel_id);return`<tr data-venda="${v.id}" style="cursor:pointer"><td>${fmtD(v.data)}</td><td><b>${esc(v.cliente||'—')}</b></td><td>${esc(i?nomeImovel(i):v.imovel_desc||'—')}</td><td class="hidem">${esc(nomeDe(v.corretor_id))}</td><td class="hidem">${v.tipo==='Locação'?'<span class="pill blue">Locação</span>':'<span class="pill green">Venda</span>'}</td><td class="num"><b>${brl(v.valor)}</b></td>${verCom?`<td class="num hidem">${brl(v.comissao)}</td>`:''}</tr>`}).join('')}</tbody></table>`
      :`<div class="empty">${vfAtivo()?'Nenhum negócio com esses filtros.':'Nenhuma venda registrada neste período. Quando um lead for para <b>Fechado</b>, a venda aparece aqui.'}</div>`}
      ${V.length&&vfAtivo()?`<div class="vftot">Filtrado: <b>${V.length}</b> negócio${V.length===1?'':'s'} · <b>${brl(tot)}</b>${verCom?` · comissões <b>${brl(V.reduce((s,v)=>s+(+v.comissao||0),0))}</b>`:''}</div>`:''}</div>
   </div>`;
@@ -1640,9 +1654,9 @@ function rImport(){
   return`<div class="imp"><h3>📥 Importar backup do sistema antigo</h3><p>Selecione o arquivo <b>backup-ipiranga.json</b>. Pode importar de novo sem duplicar.</p>
    <input type="file" id="impFile" accept=".json,application/json"> <span id="impMsg" style="margin-left:10px;color:var(--amber)">${esc(S.impMsg||'')}</span></div>
    ${nomes.length?`<div class="imp"><h3>🔀 Passar leads importados para cada corretor</h3><p>Escolha quem vai cuidar dos leads de cada responsável do sistema antigo e clique em Transferir. O corretor precisa ter conta liberada.</p>
-   <table><thead><tr><th>Responsável no sistema antigo</th><th class="num">Leads</th><th>Passar para</th><th></th></tr></thead><tbody>
+   <table class="tcard"><thead><tr><th>Responsável no sistema antigo</th><th class="num">Leads</th><th>Passar para</th><th></th></tr></thead><tbody>
    ${nomes.map(n=>{const sug=ativos().find(p=>p.nome.toLowerCase().split(' ')[0]===n.toLowerCase().split(' ')[0]);
-     return`<tr><td>${esc(n)}</td><td class="num">${cont[n]}</td><td><select class="sel" data-orig="${esc(n)}" style="padding:6px 8px">${opts(ativos().map(p=>({v:p.id,t:p.nome})),sug?.id||S.me.id)}</select></td><td><button class="btn sm" data-transf="${esc(n)}">Transferir</button></td></tr>`}).join('')}
+     return`<tr><td class="tc-full" data-l="Sistema antigo"><b>${esc(n)}</b></td><td class="num" data-l="Leads">${cont[n]}</td><td class="tc-full" data-l="Passar para"><select class="sel" data-orig="${esc(n)}" style="padding:6px 8px">${opts(ativos().map(p=>({v:p.id,t:p.nome})),sug?.id||S.me.id)}</select></td><td class="tc-full"><button class="btn sm" data-transf="${esc(n)}">Transferir</button></td></tr>`}).join('')}
    </tbody></table></div>`:''}`}
 async function importar(file){
   const msg=t=>{S.impMsg=t;const el=$('impMsg');if(el)el.textContent=t};
@@ -1694,13 +1708,13 @@ async function importar(file){
   }catch(e){console.error(e);msg('Erro: '+(e.message||e)+(/origem_id/.test(e.message||'')?' — rode no Supabase o SQL de importação de vendas':''))}
 }
 function rEquipe(){if(!isDir())return;const P=[...S.perfis].sort((a,b)=>(a.ativo===b.ativo?0:a.ativo?1:-1)||a.nome.localeCompare(b.nome));
-  $('eList').innerHTML=rImport()+`<table><thead><tr><th>Nome</th><th class="hidem">E-mail</th><th>WhatsApp</th><th>CRECI definitivo</th><th>Papel</th><th>Acesso</th><th class="num hidem">Leads ativos</th></tr></thead><tbody>${P.map(p=>{const eu=p.id===S.me.id;
+  $('eList').innerHTML=rImport()+`<table class="tcard"><thead><tr><th>Nome</th><th class="hidem">E-mail</th><th>WhatsApp</th><th>CRECI definitivo</th><th>Papel</th><th>Acesso</th><th class="num hidem">Leads ativos</th></tr></thead><tbody>${P.map(p=>{const eu=p.id===S.me.id;
    const nl=S.leads.filter(l=>l.corretor_id===p.id&&!FINAIS.includes(l.etapa)).length;
    const podeNome=eu||isMaster()||p.papel!=='diretor';
-   return`<tr><td>${podeNome?`<input class="sel" data-nome="${p.id}" value="${esc(p.nome)}" style="padding:6px 8px;width:190px;font-weight:700">`:`<b>${esc(p.nome)}</b>`}${eu?' <span class="pill br">você</span>':''}</td><td class="hidem">${esc(p.email||'')}</td><td><input class="sel" data-wa="${p.id}" value="${esc(p.whatsapp||'')}" placeholder="(62) 9…" style="padding:6px 8px;width:150px"></td>
-   <td>${p.papel==='diretor'?'<span style="color:var(--muted)">—</span>':`<label class="chk" style="margin:0"><input type="checkbox" data-creci="${p.id}" ${p.creci_definitivo?'checked':''}> ${pctCorretor(p)}%</label>`}</td>
-   <td>${eu||(p.papel==='diretor'&&!isMaster())?(p.master?'Diretor geral':'Diretor'):`<select class="sel" data-papel="${p.id}" style="padding:6px 8px">${opts([{v:'corretor',t:'Corretor'},{v:'gerente',t:'Gerente'},{v:'secretaria',t:'Secretária'},{v:'diretor',t:'Diretor'}],p.papel)}</select>`}</td>
-   <td>${eu||(p.papel==='diretor'&&p.ativo&&!isMaster())?'<span class="pill green">Liberado</span>':p.ativo?`<button class="btn ghost sm" data-ativo="${p.id}" data-val="0">Bloquear</button>`:`<button class="btn sm" data-ativo="${p.id}" data-val="1">✓ Liberar acesso</button>`}</td>
+   return`<tr><td class="tc-full" data-l="Nome">${podeNome?`<input class="sel" data-nome="${p.id}" value="${esc(p.nome)}" style="padding:6px 8px;width:190px;font-weight:700">`:`<b>${esc(p.nome)}</b>`}${eu?' <span class="pill br">você</span>':''}</td><td class="hidem">${esc(p.email||'')}</td><td data-l="WhatsApp"><input class="sel" data-wa="${p.id}" value="${esc(p.whatsapp||'')}" placeholder="(62) 9…" style="padding:6px 8px;width:150px"></td>
+   <td data-l="CRECI definitivo">${p.papel==='diretor'?'<span style="color:var(--muted)">—</span>':`<label class="chk" style="margin:0"><input type="checkbox" data-creci="${p.id}" ${p.creci_definitivo?'checked':''}> ${pctCorretor(p)}%</label>`}</td>
+   <td data-l="Papel">${eu||(p.papel==='diretor'&&!isMaster())?(p.master?'Diretor geral':'Diretor'):`<select class="sel" data-papel="${p.id}" style="padding:6px 8px">${opts([{v:'corretor',t:'Corretor'},{v:'gerente',t:'Gerente'},{v:'secretaria',t:'Secretária'},{v:'diretor',t:'Diretor'}],p.papel)}</select>`}</td>
+   <td data-l="Acesso">${eu||(p.papel==='diretor'&&p.ativo&&!isMaster())?'<span class="pill green">Liberado</span>':p.ativo?`<button class="btn ghost sm" data-ativo="${p.id}" data-val="0">Bloquear</button>`:`<button class="btn sm" data-ativo="${p.id}" data-val="1">✓ Liberar acesso</button>`}</td>
    <td class="num hidem">${nl}</td></tr>`}).join('')}</tbody></table>`}
 $('eList').onclick=async e=>{const b=e.target.closest('[data-ativo]');if(!b)return;const{error}=await sb.from('profiles').update({ativo:b.dataset.val==='1'}).eq('id',b.dataset.ativo);
   if(error)return falha(error);toast(b.dataset.val==='1'?'Acesso liberado ✓':'Acesso bloqueado');await carregar('profiles');rEquipe()};
