@@ -515,3 +515,70 @@ create or replace view public.site_imoveis as
          descricao, fotos, round(lat::numeric, 3)::float8 as lat, round(lng::numeric, 3)::float8 as lng, criado, area_terreno
     from public.imoveis where status = 'Disponível';
 grant select on public.site_imoveis to anon, authenticated;
+-- TEMPO DE ATENDIMENTO: alerta em 15 min e repasse automático da roleta em 30 min
+alter table public.leads add column if not exists atribuido_em timestamptz default now();
+alter table public.leads add column if not exists atendido_em timestamptz;
+alter table public.leads add column if not exists repasses int not null default 0;
+-- leads que já existem contam como atendidos (o relógio vale só daqui pra frente)
+update public.leads set atendido_em = coalesce(atualizado, criado, now()) where atendido_em is null;
+
+create or replace function public.leads_atribuicao() returns trigger language plpgsql as $$
+begin
+  if tg_op = 'INSERT' then
+    new.atribuido_em := now();
+    -- importado, criado pelo próprio corretor ou já fora de "novo" = já atendido
+    if new.origem_id is not null or new.corretor_id = auth.uid() or new.etapa <> 'novo' then
+      new.atendido_em := now();
+    else
+      new.atendido_em := null;
+    end if;
+  elsif new.corretor_id is distinct from old.corretor_id then
+    new.atribuido_em := now();
+    new.atendido_em := case when new.corretor_id = auth.uid() then now() else null end;
+  elsif old.atendido_em is null and (auth.uid() = new.corretor_id or new.etapa <> 'novo') then
+    new.atendido_em := now();  -- o corretor mexeu no lead
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_leads_atribuicao on public.leads;
+create trigger trg_leads_atribuicao before insert or update on public.leads
+  for each row execute function public.leads_atribuicao();
+
+-- repassa para o próximo da roleta o lead parado (seg a sáb, 8h às 20h; no máximo 2 repasses)
+create or replace function public.repassar_leads_parados() returns int
+language plpgsql security definer set search_path = public as $$
+declare
+  agora timestamp := now() at time zone 'America/Sao_Paulo';
+  abre timestamptz := (date_trunc('day', now() at time zone 'America/Sao_Paulo') + interval '8 hours') at time zone 'America/Sao_Paulo';
+  l record; c public.campanhas; lista uuid[]; n int; prox uuid; tot int := 0;
+begin
+  if extract(isodow from agora) = 7 or extract(hour from agora) < 8 or extract(hour from agora) >= 20 then return 0; end if;
+  for l in select * from public.leads
+           where etapa = 'novo' and atendido_em is null and campanha_id is not null and repasses < 2
+             and greatest(atribuido_em, abre) < now() - interval '30 minutes'
+           for update skip locked loop
+    select * into c from public.campanhas where id = l.campanha_id and ativa for update;
+    if not found then continue; end if;
+    select array_agg(x order by ord) into lista
+      from unnest(c.participantes) with ordinality as t(x, ord)
+      join public.profiles p on p.id = t.x
+     where p.ativo and not (t.x = any(coalesce(c.pausados, '{}'))) and t.x <> l.corretor_id;
+    n := coalesce(array_length(lista, 1), 0);
+    if n = 0 then continue; end if;
+    prox := lista[(c.ponteiro % n) + 1];
+    update public.campanhas set ponteiro = ponteiro + 1 where id = c.id;
+    update public.leads set corretor_id = prox, repasses = repasses + 1, atualizado = now(),
+      notas = notas || jsonb_build_array(jsonb_build_object(
+        't', '↪️ Repassado automaticamente: ' || coalesce((select nome from public.profiles where id = l.corretor_id), '?') || ' não atendeu em 30 min',
+        'em', floor(extract(epoch from now()) * 1000), 'por', 'Roleta'))
+     where id = l.id;
+    tot := tot + 1;
+  end loop;
+  return tot;
+end $$;
+revoke all on function public.repassar_leads_parados() from public, anon, authenticated;
+
+-- roda sozinho a cada 5 minutos
+create extension if not exists pg_cron;
+select cron.unschedule('repassar-leads-parados') where exists (select 1 from cron.job where jobname = 'repassar-leads-parados');
+select cron.schedule('repassar-leads-parados', '*/5 * * * *', 'select public.repassar_leads_parados()');

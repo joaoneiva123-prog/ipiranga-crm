@@ -149,6 +149,10 @@ header .brand{cursor:pointer}
 .vfbar{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 12px;align-items:center}.vfbar input{background:#1f1f1f;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px 10px;font:inherit;font-size:13px;min-width:0}
 .vfbar>input{flex:1 1 180px}.vfbar .par{display:flex;align-items:center;gap:5px}.vfbar .par span{font-size:12px;color:var(--muted);white-space:nowrap}.vfbar .par input{width:92px}
 .vftot{margin-top:10px;font-size:13px;color:var(--muted)}
+.slabox{margin:12px 22px 0;background:#3b1717;border:1px solid #7f1d1d;border-radius:14px;padding:12px 14px}.slatit{font-weight:800}.slasub{font-size:13px;color:#fca5a5;margin:2px 0 8px}
+.slalist{display:flex;gap:8px;overflow-x:auto}.slalist .tchip{min-width:180px;flex:0 0 auto;cursor:pointer;display:block;margin:0}.slawa{display:inline-block;margin-top:6px;background:#14532d;color:#bbf7d0;border-radius:7px;padding:4px 9px;font-size:12px;font-weight:700;text-decoration:none}
+#slaDash .slabox{margin:12px 0 0}
+@media (max-width:900px){.slabox{margin:10px 14px 0}}
 @media (max-height:800px){header{position:static}}
 .mapa{height:260px;border-radius:12px;overflow:hidden;border:1px solid var(--line);background:#2a2a2a}
 .mapaG{flex:1;margin:0 22px 18px;border-radius:14px;overflow:hidden;border:1px solid var(--line);min-height:300px}
@@ -288,7 +292,7 @@ td.num,th.num{text-align:right;white-space:nowrap}
   </header>
 
   <!-- DASHBOARD -->
-  <section class="view" id="vDash"><div class="dash" id="dash"></div></section>
+  <section class="view" id="vDash"><div id="slaDash" style="padding:0 22px"></div><div class="dash" id="dash"></div></section>
 
   <!-- ROLETA -->
   <section class="view hide" id="vRoleta"><div class="dash" id="roleta"></div></section>
@@ -327,6 +331,7 @@ td.num,th.num{text-align:right;white-space:nowrap}
         <div class="stat green"><b id="sVis">0</b><small>Visitas 7d</small></div>
       </div>
     </div>
+    <div id="slaLeads"></div>
     <div class="tabs" id="lTabs"></div>
     <div class="today"><h2>Fazer hoje<b id="todayN">0</b></h2><div class="todaylist" id="todayList"></div></div>
     <main class="board" id="board"></main>
@@ -578,12 +583,13 @@ async function carregar(t){
     if(r.error){console.error(r.error);return} data=data.concat(r.data); if(r.data.length<1000)break; de+=1000}
   ({profiles:()=>S.perfis=data,leads:()=>S.leads=data,imoveis:()=>S.imoveis=data,financeiro:()=>S.fin=data,vendas:()=>S.vendas=data,captacoes:()=>S.capt=data,campanhas:()=>S.camp=data})[t]();
 }
-async function carregarTudo(){await Promise.all(['profiles','leads','imoveis','financeiro','vendas','captacoes','campanhas'].map(carregar));render()}
+async function carregarTudo(){await Promise.all(['profiles','leads','imoveis','financeiro','vendas','captacoes','campanhas'].map(carregar));
+  if(jaAvisados===null)jaAvisados=new Set(S.leads.filter(c=>c.corretor_id===S.me.id&&minSemAtend(c)!=null).map(c=>c.id));render()}
 const pend={};
 function tempoReal(){
   ['leads','imoveis','financeiro','profiles','vendas','captacoes','campanhas'].forEach(t=>{
     sb.channel('rt-'+t).on('postgres_changes',{event:'*',schema:'public',table:t},()=>{
-      clearTimeout(pend[t]);pend[t]=setTimeout(async()=>{await carregar(t);render()},400)}).subscribe();
+      clearTimeout(pend[t]);pend[t]=setTimeout(async()=>{await carregar(t);render();if(t==='leads')alertaNovosMeus()},400)}).subscribe();
   });
 }
 
@@ -598,12 +604,41 @@ function tick(){const d=new Date();$('hora').textContent=pad(d.getHours())+':'+p
 let dia=hojeISO();setInterval(()=>{tick();if(hojeISO()!==dia){dia=hojeISO();render()}},15000);tick();
 function render(){if(!S.me)return;
   if(S.view==='roleta')rRoleta();else if(S.view==='capt')rCapt();else if(S.view==='dash')rDash();else if(S.view==='vendas')rVendas();else if(S.view==='leads')rLeads();else if(S.view==='imoveis')rImoveis();else if(S.view==='fin')rFin();else rEquipe();
-  requestAnimationFrame(ajustarAlturas)}
+  rSla();requestAnimationFrame(ajustarAlturas)}
 /* quadros (kanban) e mapa ocupam a tela que sobra; em tela pequena ficam com altura mínima e a página rola */
 function ajustarAlturas(){document.querySelectorAll('.view:not(.hide) .board, .view:not(.hide) .mapaG:not(.hide)').forEach(el=>{
   const top=el.getBoundingClientRect().top+scrollY,h=Math.max(460,innerHeight-top-18);el.style.flex='none';if(el.style.height!==h+'px')el.style.height=h+'px'});
   try{if(typeof gMapa!=='undefined'&&gMapa)gMapa.invalidateSize()}catch(_){}}
 addEventListener('resize',()=>{clearTimeout(S._rz);S._rz=setTimeout(ajustarAlturas,150)});
+
+/* ================= TEMPO DE ATENDIMENTO (SLA) ================= */
+const SLA_ALERTA=15,SLA_REPASSE=30;
+function minSemAtend(c){if(!c||c.etapa!=='novo'||c.atendido_em||!c.atribuido_em)return null;return Math.max(0,Math.floor((Date.now()-new Date(c.atribuido_em))/60000))}
+const fmtMin=m=>m<60?m+' min':m<1440?Math.floor(m/60)+'h'+(m%60?String(m%60).padStart(2,'0'):''):Math.floor(m/1440)+' dia'+(m>=2880?'s':'');
+function slaPill(c){const m=minSemAtend(c);if(m==null)return'';return m>=SLA_ALERTA?`<span class="pill red">⏰ ${fmtMin(m)} sem atendimento</span>`:`<span class="pill amber">🆕 há ${fmtMin(m)}</span>`}
+async function marcarAtendido(c){if(!c||c.corretor_id!==S.me.id||c.atendido_em)return;c.atendido_em=new Date().toISOString();
+  const{error}=await sb.from('leads').update({atendido_em:c.atendido_em}).eq('id',c.id);if(error)console.warn(error)}
+function rSla(){const box=S.view==='leads'?$('slaLeads'):S.view==='dash'?$('slaDash'):null;['slaLeads','slaDash'].forEach(id=>{const e=$(id);if(e&&e!==box)e.innerHTML=''});if(!box)return;
+  const P=S.leads.map(c=>({c,m:minSemAtend(c)})).filter(x=>x.m!=null&&(gestor()?(x.m>=SLA_ALERTA||x.c.corretor_id===S.me.id):x.c.corretor_id===S.me.id)).sort((a,b)=>b.m-a.m);
+  const alerta='Notification' in window&&Notification.permission==='default'?'<button class="btn ghost sm" id="slaNotif">🔔 Avisar neste aparelho quando chegar lead</button>':'';
+  if(!P.length){box.innerHTML=alerta?`<div style="margin:10px 22px 0">${alerta}</div>`:'';return}
+  const meus=P.filter(x=>x.c.corretor_id===S.me.id),outros=P.filter(x=>x.c.corretor_id!==S.me.id);
+  box.innerHTML=`<div class="slabox">${meus.length?`<div class="slatit">⏰ ${meus.length===1?'1 lead esperando você':meus.length+' leads esperando você'} · atenda agora</div>
+    <div class="slasub">Quem chama nos primeiros minutos converte muito mais. ${meus.some(x=>x.c.campanha_id)?`Lead da roleta sem atendimento em ${SLA_REPASSE} min vai para o próximo corretor.`:''}</div>
+    <div class="slalist">${meus.map(({c,m})=>`<div class="tchip ${m>=SLA_ALERTA?'late':'today'}" data-lead="${c.id}"><b>${esc(c.nome)}</b><small>${esc(c.tel||'')} · há ${fmtMin(m)}</small></div>`).join('')}</div>`:''}
+   ${outros.length?`<div class="slatit" ${meus.length?'style="margin-top:12px"':''}>🚨 ${outros.length} lead${outros.length>1?'s':''} da equipe sem atendimento há mais de ${SLA_ALERTA} min</div>
+    <div class="slalist">${outros.map(({c,m})=>{const p=S.perfis.find(x=>x.id===c.corretor_id);const msg=`⏰ ${p?p.nome.split(' ')[0]:''}, o lead *${c.nome}*${c.tel?' ('+c.tel+')':''} está há ${fmtMin(m)} sem atendimento. Chame agora!\nCRM: ${APP_URL}`;
+      return`<div class="tchip late" data-lead="${c.id}"><b>${esc(c.nome)}</b><small>${esc(nomeDe(c.corretor_id))} · há ${fmtMin(m)}</small>${p?.whatsapp?`<a class="slawa" href="${esc(waLink(p.whatsapp,msg))}" target="_blank" rel="noopener" data-qa="wa">💬 Cobrar</a>`:''}</div>`}).join('')}</div>`:''}
+   ${alerta?`<div style="margin-top:10px">${alerta}</div>`:''}</div>`}
+document.addEventListener('click',async e=>{if(e.target.id!=='slaNotif')return;try{await Notification.requestPermission()}catch(_){}rSla();if(Notification.permission==='granted')toast('Alertas ativados neste aparelho ✓')});
+let jaAvisados=null;
+function bip(){try{const a=new(window.AudioContext||window.webkitAudioContext)(),o=a.createOscillator(),g=a.createGain();o.connect(g);g.connect(a.destination);o.frequency.value=880;g.gain.setValueAtTime(.15,a.currentTime);g.gain.exponentialRampToValueAtTime(.001,a.currentTime+.6);o.start();o.stop(a.currentTime+.6)}catch(_){}}
+function alertaNovosMeus(){const meus=S.leads.filter(c=>c.corretor_id===S.me.id&&minSemAtend(c)!=null);
+  if(jaAvisados===null){jaAvisados=new Set(meus.map(c=>c.id));return}
+  const novos=meus.filter(c=>!jaAvisados.has(c.id));novos.forEach(c=>jaAvisados.add(c.id));if(!novos.length)return;
+  bip();toast(`🔔 Novo lead para você: ${novos.map(c=>c.nome).join(', ')}`);
+  try{if('Notification' in window&&Notification.permission==='granted')novos.forEach(c=>{const n=new Notification('🔔 Novo lead – Ipiranga',{body:`${c.nome}${c.tel?' · '+c.tel:''}${c.busca?'\n'+c.busca:''}`,tag:c.id});n.onclick=()=>{focus();irPara('leads');abrirLead(c.id)}})}catch(_){}}
+setInterval(()=>{if(!S.me)return;const a=document.activeElement;if(['leads','dash'].includes(S.view)&&!document.querySelector('.ov.on')&&!(a&&/INPUT|SELECT|TEXTAREA/.test(a.tagName)))render()},60000);
 
 /* ================= LEADS ================= */
 function stLead(c){if(FINAIS.includes(c.etapa)||!c.data)return null;const n=diff(c.data);return n<0?'late':n===0?'today':n<=3?'soon':'fut'}
@@ -628,7 +663,7 @@ function rLeads(){
 function cardLead(c){const st=stLead(c);const ult=(c.notas||[]).slice(-1)[0];const obs=c.busca||ult?.t||'';const im=S.imoveis.find(i=>i.id===c.imovel_id);
   return`<div class="card ${st==='late'?'late':st==='today'?'today':''}" draggable="true" data-lead="${c.id}"><div class="nm">${esc(c.nome)}</div>
   <div class="ph">${esc([c.tel,c.origem].filter(Boolean).join(' · '))}</div>${obs?`<div class="obs">${esc(obs)}</div>`:''}
-  <div class="meta">${c.data&&!FINAIS.includes(c.etapa)?`<span class="pill ${st==='fut'?'':st}">📅 ${esc(rotLead(c))}</span>`:''}${im?`<span class="pill br">🏠 ${esc(im.codigo||im.titulo).slice(0,22)}</span>`:''}${(c.notas||[]).length?`<span class="pill">📝 ${c.notas.length}</span>`:''}${gestor()?`<span class="pill blue">👤 ${esc(nomeDe(c.corretor_id).split(' ')[0])}</span>`:''}</div>${FINAIS.includes(c.etapa)?'':`<div class="qa"><button data-qa="sem" data-id="${c.id}" data-tip="Liguei e não atendeu · reagenda +2 dias">📵 +2d</button><button data-qa="visita" data-id="${c.id}" data-tip="Marcar visita">🏠 Visita</button><button data-qa="colar" data-id="${c.id}" data-tip="Colar conversa do WhatsApp nas observações">📋 Colar</button>${waLink(c.tel)?`<a data-qa="wa" href="${waLink(c.tel)}" target="_blank" rel="noopener" data-tip="Abrir conversa com o cliente">💬</a>`:''}<button data-qa="ganhou" data-id="${c.id}" data-tip="Fechou negócio · registrar venda">🏆</button><button data-qa="perdido" data-id="${c.id}" data-tip="Marcar como perdido">✖</button></div>`}</div>`}
+  <div class="meta">${slaPill(c)}${c.data&&!FINAIS.includes(c.etapa)?`<span class="pill ${st==='fut'?'':st}">📅 ${esc(rotLead(c))}</span>`:''}${im?`<span class="pill br">🏠 ${esc(im.codigo||im.titulo).slice(0,22)}</span>`:''}${(c.notas||[]).length?`<span class="pill">📝 ${c.notas.length}</span>`:''}${gestor()?`<span class="pill blue">👤 ${esc(nomeDe(c.corretor_id).split(' ')[0])}</span>`:''}</div>${FINAIS.includes(c.etapa)?'':`<div class="qa"><button data-qa="sem" data-id="${c.id}" data-tip="Liguei e não atendeu · reagenda +2 dias">📵 +2d</button><button data-qa="visita" data-id="${c.id}" data-tip="Marcar visita">🏠 Visita</button><button data-qa="colar" data-id="${c.id}" data-tip="Colar conversa do WhatsApp nas observações">📋 Colar</button>${waLink(c.tel)?`<a data-qa="wa" href="${waLink(c.tel)}" target="_blank" rel="noopener" data-tip="Abrir conversa com o cliente">💬</a>`:''}<button data-qa="ganhou" data-id="${c.id}" data-tip="Fechou negócio · registrar venda">🏆</button><button data-qa="perdido" data-id="${c.id}" data-tip="Marcar como perdido">✖</button></div>`}</div>`}
 $('lTabs').onclick=e=>{const b=e.target.closest('[data-f]');if(b){S.lFiltro=b.dataset.f;rLeads()}};
 $('lBusca').oninput=e=>{S.lBusca=e.target.value;rLeads()};
 $('lCorretor').onchange=e=>{S.lCor=e.target.value;rLeads()};
@@ -650,7 +685,7 @@ $('mlEtapa').innerHTML=ETAPAS.map(e=>`<option value="${e.id}">${e.ico} ${esc(e.n
 $('mlEtapa').onchange=()=>{$('mlDataL').textContent=ETAPAS.find(x=>x.id===$('mlEtapa').value).data||'Próximo contato'};
 $('mlQuick').onclick=e=>{const b=e.target.closest('button');if(b)$('mlData').value=b.dataset.d==='x'?'':addDias(+b.dataset.d)};
 $('lNovo').onclick=()=>abrirLead(null);
-function abrirLead(id){const c=id?S.leads.find(x=>x.id===id):null;if(id&&!c)return;mlId=c?.id||null;mlNotas=[...(c?.notas||[])];
+function abrirLead(id){const c=id?S.leads.find(x=>x.id===id):null;if(id&&!c)return;marcarAtendido(c);mlId=c?.id||null;mlNotas=[...(c?.notas||[])];
   $('mlTitle').textContent=c?c.nome:'Novo lead';$('mlNome').value=c?.nome||'';$('mlTel').value=c?.tel||'';
   $('mlEtapa').value=c?.etapa||(S.lFiltro!=='todos'?S.lFiltro:'novo');$('mlEtapa').onchange();
   $('mlOrigem').value=c?.origem||'';$('mlData').value=c?.data||'';$('mlHora').value=c?.hora||'';$('mlBusca').value=c?.busca||'';$('mlNText').value='';
