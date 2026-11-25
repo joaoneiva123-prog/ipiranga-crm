@@ -146,6 +146,9 @@ header .brand{cursor:pointer}
 .btnwa{display:inline-block;background:#16a34a;color:#fff;border-radius:10px;padding:12px 18px;font-weight:800;text-decoration:none;text-align:center}
 /* mapa */
 .mapa,.mapaG{position:relative;isolation:isolate;z-index:0}
+.vfbar{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 12px;align-items:center}.vfbar input{background:#1f1f1f;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px 10px;font:inherit;font-size:13px;min-width:0}
+.vfbar>input{flex:1 1 180px}.vfbar .par{display:flex;align-items:center;gap:5px}.vfbar .par span{font-size:12px;color:var(--muted);white-space:nowrap}.vfbar .par input{width:92px}
+.vftot{margin-top:10px;font-size:13px;color:var(--muted)}
 .mapa{height:260px;border-radius:12px;overflow:hidden;border:1px solid var(--line);background:#2a2a2a}
 .mapaG{flex:1;margin:0 22px 18px;border-radius:14px;overflow:hidden;border:1px solid var(--line);min-height:300px}
 .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:#262626;color:#fffafa}.leaflet-popup-content{margin:10px 12px;font-family:'DM Sans',sans-serif}
@@ -498,7 +501,7 @@ function toast(t){const el=$('toast');el.textContent=t;el.style.display='block';
 function falha(e){console.error(e);toast('Erro: '+(e?.message||'não consegui salvar'))}
 
 /* ================= ESTADO ================= */
-const S={camp:[],capt:[],cFiltro:'todos',cBusca:'',me:null,perfis:[],leads:[],imoveis:[],fin:[],vendas:[],vAno:new Date().getFullYear(),vMes:'',vCor:'',view:'dash',lFiltro:'todos',lBusca:'',lCor:'',fTab:'comissoes'};
+const S={camp:[],capt:[],cFiltro:'todos',cBusca:'',me:null,perfis:[],leads:[],imoveis:[],fin:[],vendas:[],vAno:new Date().getFullYear(),vMes:'',vCor:'',vf:{cli:'',uni:'',vmin:'',vmax:'',cmin:'',cmax:''},vOrd:{k:'data',d:-1},view:'dash',lFiltro:'todos',lBusca:'',lCor:'',fTab:'comissoes'};
 const isDir=()=>S.me?.papel==='diretor';
 const isGer=()=>S.me?.papel==='gerente';
 const isSec=()=>S.me?.papel==='secretaria';
@@ -1539,7 +1542,13 @@ async function cancelarVenda(){const v=vdCtx.venda;if(!v)return;
     if(v.lead_id)await sb.from('leads').update({etapa:'retornar'}).eq('id',v.lead_id);
     toast('Venda cancelada');await Promise.all(['vendas','leads','imoveis'].map(carregar));render();return true},'Sim, cancelar')}
 
-function vendasFiltradas(){return S.vendas.filter(v=>(v.data||'').startsWith(String(S.vAno))&&(!S.vMes||(v.data||'').slice(5,7)===S.vMes)&&(!S.vCor||v.corretor_id===S.vCor))}
+function unidadeTxt(v){const i=S.imoveis.find(x=>x.id===v.imovel_id);return i?[nomeImovel(i),i.codigo,i.condominio,i.bairro].filter(Boolean).join(' '):(v.imovel_desc||'')}
+function vendasFiltradas(){const f=S.vf,lo=t=>(t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''),cli=lo(f.cli.trim()),uni=lo(f.uni.trim()),
+  vmin=num(f.vmin),vmax=num(f.vmax),cmin=num(f.cmin),cmax=num(f.cmax);
+  return S.vendas.filter(v=>(v.data||'').startsWith(String(S.vAno))&&(!S.vMes||(v.data||'').slice(5,7)===S.vMes)&&(!S.vCor||v.corretor_id===S.vCor)
+   &&(!cli||lo(v.cliente).includes(cli))&&(!uni||lo(unidadeTxt(v)).includes(uni))
+   &&(vmin==null||(+v.valor||0)>=vmin)&&(vmax==null||(+v.valor||0)<=vmax)&&(cmin==null||(+v.comissao||0)>=cmin)&&(cmax==null||(+v.comissao||0)<=cmax))}
+function vfAtivo(){return Object.values(S.vf).some(x=>String(x).trim())}
 function rVendas(){
   const V=vendasFiltradas(),verCom=!isSec(),anos=[...new Set([new Date().getFullYear(),...S.vendas.map(v=>+(v.data||'').slice(0,4)).filter(Boolean)])].sort((a,b)=>b-a);
   const tot=V.reduce((s,v)=>s+(+v.valor||0),0),souCor=!isDir();
@@ -1576,10 +1585,18 @@ function rVendas(){
      ${rank.length?`<table class="rk"><thead><tr><th>Corretor</th><th>Nº</th><th>VGV</th><th></th>${verCom?'<th>Ganho dele</th>':''}</tr></thead><tbody>
      ${rank.map(([id,r],k)=>`<tr data-vcor="${id}" style="cursor:pointer"><td><b>${['🥇','🥈','🥉'][k]||''} ${esc(nomeDe(id))}</b></td><td>${r.n}</td><td>${brlK(r.vgv)}</td><td style="width:22%"><div class="mini"><i style="width:${r.vgv/rmax*100}%;background:#16a34a"></i></div></td>${verCom?`<td>${brlK(r.com)}</td>`:''}</tr>`).join('')}</tbody></table>`
      :'<div style="color:var(--muted);padding:16px 0">Nenhuma venda no período.</div>'}</div>
-   <div class="box w12"><h3>Negócios fechados</h3><div class="sub">Clique para ver ou editar</div>
-     ${V.length?`<table class="rk"><thead><tr><th>Data</th><th>Cliente</th><th>Unidade</th><th class="hidem">Corretor</th><th>Tipo</th><th class="num">Valor</th>${verCom?'<th class="num hidem">Comissão</th>':''}</tr></thead><tbody>
-     ${[...V].sort((a,b)=>a.data<b.data?1:-1).map(v=>{const i=S.imoveis.find(x=>x.id===v.imovel_id);return`<tr data-venda="${v.id}" style="cursor:pointer"><td>${fmtD(v.data)}</td><td><b>${esc(v.cliente||'—')}</b></td><td>${esc(i?nomeImovel(i):v.imovel_desc||'—')}</td><td class="hidem">${esc(nomeDe(v.corretor_id))}</td><td>${v.tipo==='Locação'?'<span class="pill blue">Locação</span>':'<span class="pill green">Venda</span>'}</td><td class="num"><b>${brl(v.valor)}</b></td>${verCom?`<td class="num hidem">${brl(v.comissao)}</td>`:''}</tr>`}).join('')}</tbody></table>`
-     :'<div class="empty">Nenhuma venda registrada neste período. Quando um lead for para <b>Fechado</b>, a venda aparece aqui.</div>'}</div>
+   <div class="box w12"><h3>Negócios fechados</h3><div class="sub">Clique para ver ou editar · clique no título da coluna para ordenar</div>
+     <div class="vfbar">
+      <input id="vfCli" placeholder="🔎 Cliente" value="${esc(S.vf.cli)}">
+      <input id="vfUni" placeholder="🏠 Unidade, código ou condomínio" value="${esc(S.vf.uni)}">
+      <div class="par"><span>Valor R$</span><input id="vfVmin" inputmode="decimal" placeholder="mín." value="${esc(S.vf.vmin)}"><input id="vfVmax" inputmode="decimal" placeholder="máx." value="${esc(S.vf.vmax)}"></div>
+      ${verCom?`<div class="par"><span>Comissão R$</span><input id="vfCmin" inputmode="decimal" placeholder="mín." value="${esc(S.vf.cmin)}"><input id="vfCmax" inputmode="decimal" placeholder="máx." value="${esc(S.vf.cmax)}"></div>`:''}
+      ${vfAtivo()?'<button class="btn ghost sm" id="vfLimpar">✕ Limpar filtros</button>':''}
+     </div>
+     ${V.length?`<table class="rk"><thead><tr>${[['data','Data'],['cliente','Cliente'],['unidade','Unidade'],['corretor','Corretor','hidem'],['tipo','Tipo'],['valor','Valor','num'],...(verCom?[['comissao','Comissão','num hidem']]:[])].map(([k,t,c])=>`<th class="${c||''}" data-vord="${k}" style="cursor:pointer;white-space:nowrap">${t}${S.vOrd.k===k?(S.vOrd.d>0?' ▲':' ▼'):''}</th>`).join('')}</tr></thead><tbody>
+     ${ordVendas([...V]).map(v=>{const i=S.imoveis.find(x=>x.id===v.imovel_id);return`<tr data-venda="${v.id}" style="cursor:pointer"><td>${fmtD(v.data)}</td><td><b>${esc(v.cliente||'—')}</b></td><td>${esc(i?nomeImovel(i):v.imovel_desc||'—')}</td><td class="hidem">${esc(nomeDe(v.corretor_id))}</td><td>${v.tipo==='Locação'?'<span class="pill blue">Locação</span>':'<span class="pill green">Venda</span>'}</td><td class="num"><b>${brl(v.valor)}</b></td>${verCom?`<td class="num hidem">${brl(v.comissao)}</td>`:''}</tr>`}).join('')}</tbody></table>`
+     :`<div class="empty">${vfAtivo()?'Nenhum negócio com esses filtros.':'Nenhuma venda registrada neste período. Quando um lead for para <b>Fechado</b>, a venda aparece aqui.'}</div>`}
+     ${V.length&&vfAtivo()?`<div class="vftot">Filtrado: <b>${V.length}</b> negócio${V.length===1?'':'s'} · <b>${brl(tot)}</b>${verCom?` · comissões <b>${brl(V.reduce((s,v)=>s+(+v.comissao||0),0))}</b>`:''}</div>`:''}</div>
   </div>`;
 }
 $('vendas').addEventListener('click',e=>{const t=e.target;
@@ -1588,8 +1605,15 @@ $('vendas').addEventListener('click',e=>{const t=e.target;
   const r=t.closest('[data-venda]');if(r)return abrirVenda({venda:S.vendas.find(v=>v.id===r.dataset.venda)});
   const m=t.closest('[data-vmes]');if(m){S.vMes=S.vMes===m.dataset.vmes?'':m.dataset.vmes;return rVendas()}
   const c=t.closest('[data-vcor]');if(c&&gestor()){S.vCor=S.vCor===c.dataset.vcor?'':c.dataset.vcor;return rVendas()}
-  const g=t.closest('[data-regv]');if(g)return abrirVenda({lead:S.leads.find(l=>l.id===g.dataset.regv)})});
+  const g=t.closest('[data-regv]');if(g)return abrirVenda({lead:S.leads.find(l=>l.id===g.dataset.regv)});
+  const o=t.closest('[data-vord]');if(o){const k=o.dataset.vord;S.vOrd=S.vOrd.k===k?{k,d:-S.vOrd.d}:{k,d:['data','valor','comissao'].includes(k)?-1:1};return rVendas()}
+  if(t.id==='vfLimpar'){S.vf={cli:'',uni:'',vmin:'',vmax:'',cmin:'',cmax:''};return rVendas()}});
+const VF={vfCli:'cli',vfUni:'uni',vfVmin:'vmin',vfVmax:'vmax',vfCmin:'cmin',vfCmax:'cmax'};
+$('vendas').addEventListener('input',e=>{const k=VF[e.target.id];if(!k)return;S.vf[k]=e.target.value;const id=e.target.id,pos=e.target.selectionStart;
+  clearTimeout(S._vfT);S._vfT=setTimeout(()=>{rVendas();const el=$(id);if(el){el.focus();try{el.setSelectionRange(pos,pos)}catch(_){}}},250)});
 $('vendas').addEventListener('change',e=>{const id=e.target.id;if(id==='vAno')S.vAno=+e.target.value;if(id==='vMes')S.vMes=e.target.value;if(id==='vCor')S.vCor=e.target.value;rVendas()});
+function ordVendas(V){const{k,d}=S.vOrd,val=v=>k==='valor'?+v.valor||0:k==='comissao'?+v.comissao||0:k==='cliente'?(v.cliente||'').toLowerCase():k==='unidade'?unidadeTxt(v).toLowerCase():k==='corretor'?nomeDe(v.corretor_id).toLowerCase():k==='tipo'?v.tipo||'':v.data||'';
+  return V.sort((a,b)=>{const x=val(a),y=val(b);return(x<y?-1:x>y?1:0)*d})}
 function baixarCsv(){const V=vendasFiltradas(),verCom=!isSec(),q=s=>'"'+String(s??'').replace(/"/g,'""')+'"',nb=n=>n==null?'':String(n).replace('.',',');
   const dir=isDir(),head=['Data','Mês','Cliente','Unidade','Bairro','Corretor','Tipo','Valor',...(verCom?['Comissão %','Comissão total','Parte corretor','% corretor',...(dir?['Parte gerente','Ipiranga']:[]),...(isGer()?['Parte gestão','Para você']:[])]:[]),'Observações'];
   const linhas=V.sort((a,b)=>a.data<b.data?-1:1).map(v=>{const i=S.imoveis.find(x=>x.id===v.imovel_id);
