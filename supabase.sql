@@ -834,3 +834,8 @@ grant execute on function public.site_lead(text, text, text, text, text) to anon
 create extension if not exists pg_cron;
 select cron.unschedule('repassar-leads-parados') where exists (select 1 from cron.job where jobname = 'repassar-leads-parados');
 select cron.schedule('repassar-leads-parados', '*/5 * * * *', 'select public.repassar_leads_parados()');
+
+-- EXCLUIR CAMPANHA: diretor, gerente e secretária
+drop policy if exists cp_del on public.campanhas;
+create policy cp_del on public.campanhas for delete to authenticated
+  using (public.is_diretor() or public.is_gerente() or public.is_secretaria());
