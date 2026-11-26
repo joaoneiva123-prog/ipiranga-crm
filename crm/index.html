@@ -332,6 +332,10 @@ td.num,th.num{text-align:right;white-space:nowrap}
       <button class="btn" id="lNovo">+ Novo lead</button>
       <input class="search" id="lBusca" placeholder="Buscar nome, telefone, observação…">
       <select class="sel hide" id="lCorretor"></select>
+      <select class="sel" id="lPeriodo" title="Filtrar pela data de cadastro do lead">
+        <option value="">📅 Cadastro: qualquer data</option><option value="hoje">Cadastrados hoje</option><option value="ontem">Ontem</option>
+        <option value="7">Últimos 7 dias</option><option value="30">Últimos 30 dias</option><option value="mes">Este mês</option><option value="mesant">Mês passado</option><option value="per">Escolher período…</option></select>
+      <span id="lPerBox" class="hide" style="display:flex;gap:6px;align-items:center"><input type="date" class="sel" id="lDe" title="De"><span style="color:var(--muted)">até</span><input type="date" class="sel" id="lAte" title="Até"></span>
       <div class="stats">
         <div class="stat"><b id="sAtivos">0</b><small>Ativos</small></div>
         <div class="stat red"><b id="sAtras">0</b><small>Atrasados</small></div>
@@ -674,7 +678,13 @@ setInterval(()=>{if(!S.me)return;const a=document.activeElement;if(['leads','das
 /* ================= LEADS ================= */
 function stLead(c){if(FINAIS.includes(c.etapa)||!c.data)return null;const n=diff(c.data);return n<0?'late':n===0?'today':n<=3?'soon':'fut'}
 function rotLead(c){const n=diff(c.data);if(n===null)return'';const h=c.hora?' '+c.hora:'';if(n<0)return`Atrasado ${-n}d`;if(n===0)return'HOJE'+h;if(n===1)return'Amanhã'+h;return fmtD(c.data).slice(0,5)+h}
+function periodoCad(){const p=S.lPer||'',h=new Date(),d=n=>{const x=new Date(h);x.setDate(x.getDate()+n);return iso(x)},ini=iso(new Date(h.getFullYear(),h.getMonth(),1));
+  if(p==='hoje')return[hojeISO(),hojeISO()];if(p==='ontem')return[d(-1),d(-1)];if(p==='7')return[d(-6),hojeISO()];if(p==='30')return[d(-29),hojeISO()];
+  if(p==='mes')return[ini,hojeISO()];if(p==='mesant')return[iso(new Date(h.getFullYear(),h.getMonth()-1,1)),iso(new Date(h.getFullYear(),h.getMonth(),0))];
+  if(p==='per')return[S.lDe||'0000-01-01',S.lAte||'9999-12-31'];return null}
+const dataCad=c=>c.criado?iso(new Date(c.criado)):'';
 function leadsVis(){let L=S.leads;if(gestor()&&S.lCor)L=L.filter(c=>c.corretor_id===S.lCor);
+  const per=periodoCad();if(per)L=L.filter(c=>{const d=dataCad(c);return d&&d>=per[0]&&d<=per[1]});
   const q=S.lBusca.trim().toLowerCase();if(q)L=L.filter(c=>[c.nome,c.tel,c.busca,c.origem,...(c.notas||[]).map(n=>n.t)].join(' ').toLowerCase().includes(q));return L}
 const ordL=(a,b)=>{const x=a.data||'9999',y=b.data||'9999';return x<y?-1:x>y?1:0};
 function rLeads(){
@@ -694,9 +704,11 @@ function rLeads(){
 function cardLead(c){const st=stLead(c);const ult=(c.notas||[]).slice(-1)[0];const obs=c.busca||ult?.t||'';const im=S.imoveis.find(i=>i.id===c.imovel_id);
   return`<div class="card ${st==='late'?'late':st==='today'?'today':''}" draggable="true" data-lead="${c.id}"><div class="nm">${esc(c.nome)}</div>
   <div class="ph">${esc([c.tel,c.origem].filter(Boolean).join(' · '))}</div>${obs?`<div class="obs">${esc(obs)}</div>`:''}
-  <div class="meta">${slaPill(c)}${c.data&&!FINAIS.includes(c.etapa)?`<span class="pill ${st==='fut'?'':st}">📅 ${esc(rotLead(c))}</span>`:''}${im?`<span class="pill br">🏠 ${esc(im.codigo||im.titulo).slice(0,22)}</span>`:''}${(c.notas||[]).length?`<span class="pill">📝 ${c.notas.length}</span>`:''}${gestor()?`<span class="pill blue">👤 ${esc(nomeDe(c.corretor_id).split(' ')[0])}</span>`:''}</div>${FINAIS.includes(c.etapa)?'':`<div class="qa"><button data-qa="sem" data-id="${c.id}" data-tip="Liguei e não atendeu · reagenda +2 dias">📵 +2d</button><button data-qa="visita" data-id="${c.id}" data-tip="Marcar visita">🏠 Visita</button><button data-qa="colar" data-id="${c.id}" data-tip="Colar conversa do WhatsApp nas observações">📋 Colar</button>${waLink(c.tel)?`<a data-qa="wa" href="${waLink(c.tel)}" target="_blank" rel="noopener" data-tip="Abrir conversa com o cliente">💬</a>`:''}<button data-qa="ganhou" data-id="${c.id}" data-tip="Fechou negócio · registrar venda">🏆</button><button data-qa="perdido" data-id="${c.id}" data-tip="Marcar como perdido">✖</button></div>`}</div>`}
+  <div class="meta">${S.lPer&&c.criado?`<span class="pill" title="Data de cadastro">📅 ${fmtD(dataCad(c))}</span>`:''}${slaPill(c)}${c.data&&!FINAIS.includes(c.etapa)?`<span class="pill ${st==='fut'?'':st}">📅 ${esc(rotLead(c))}</span>`:''}${im?`<span class="pill br">🏠 ${esc(im.codigo||im.titulo).slice(0,22)}</span>`:''}${(c.notas||[]).length?`<span class="pill">📝 ${c.notas.length}</span>`:''}${gestor()?`<span class="pill blue">👤 ${esc(nomeDe(c.corretor_id).split(' ')[0])}</span>`:''}</div>${FINAIS.includes(c.etapa)?'':`<div class="qa"><button data-qa="sem" data-id="${c.id}" data-tip="Liguei e não atendeu · reagenda +2 dias">📵 +2d</button><button data-qa="visita" data-id="${c.id}" data-tip="Marcar visita">🏠 Visita</button><button data-qa="colar" data-id="${c.id}" data-tip="Colar conversa do WhatsApp nas observações">📋 Colar</button>${waLink(c.tel)?`<a data-qa="wa" href="${waLink(c.tel)}" target="_blank" rel="noopener" data-tip="Abrir conversa com o cliente">💬</a>`:''}<button data-qa="ganhou" data-id="${c.id}" data-tip="Fechou negócio · registrar venda">🏆</button><button data-qa="perdido" data-id="${c.id}" data-tip="Marcar como perdido">✖</button></div>`}</div>`}
 $('lTabs').onclick=e=>{const b=e.target.closest('[data-f]');if(b){S.lFiltro=b.dataset.f;rLeads()}};
 $('lBusca').oninput=e=>{S.lBusca=e.target.value;rLeads()};
+$('lPeriodo').onchange=e=>{S.lPer=e.target.value;$('lPerBox').classList.toggle('hide',S.lPer!=='per');if(S.lPer==='per'&&!$('lDe').value){$('lDe').value=iso(new Date(new Date().getFullYear(),new Date().getMonth(),1));$('lAte').value=hojeISO();S.lDe=$('lDe').value;S.lAte=$('lAte').value}rLeads()};
+$('lDe').onchange=e=>{S.lDe=e.target.value;rLeads()};$('lAte').onchange=e=>{S.lAte=e.target.value;rLeads()};
 $('lCorretor').onchange=e=>{S.lCor=e.target.value;rLeads()};
 document.addEventListener('click',e=>{if(e.target.closest('[data-qa]'))return;const c=e.target.closest('[data-lead]');if(c&&!e.target.closest('.modal'))abrirLead(c.dataset.lead)});
 document.addEventListener('click',e=>{const b=e.target.closest('[data-qa]');if(!b||b.dataset.qa==='wa')return;e.preventDefault();acaoRapida(b.dataset.qa,b.dataset.id)});
