@@ -630,3 +630,85 @@ begin
   return tot;
 end $$;
 revoke all on function public.repassar_leads_parados() from public, anon, authenticated;
+-- REPASSE AUTOMÁTICO COMPLETO (pode rodar mais de uma vez sem problema)
+alter table public.leads add column if not exists atribuido_em timestamptz default now();
+alter table public.leads add column if not exists atendido_em timestamptz;
+alter table public.leads add column if not exists repasses int not null default 0;
+alter table public.campanhas add column if not exists padrao boolean not null default false;
+
+create or replace function public.leads_atribuicao() returns trigger language plpgsql as $$
+begin
+  if tg_op = 'INSERT' then
+    new.atribuido_em := now();
+    if new.origem_id is not null or new.corretor_id = auth.uid() or new.etapa <> 'novo' then new.atendido_em := now();
+    else new.atendido_em := null; end if;
+  elsif new.corretor_id is distinct from old.corretor_id then
+    new.atribuido_em := now();
+    new.atendido_em := case when new.corretor_id = auth.uid() then now() else null end;
+  elsif old.atendido_em is null and (auth.uid() = new.corretor_id or new.etapa <> 'novo') then
+    new.atendido_em := now();
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_leads_atribuicao on public.leads;
+create trigger trg_leads_atribuicao before insert or update on public.leads
+  for each row execute function public.leads_atribuicao();
+
+create or replace function public.minutos_uteis(a timestamptz, b timestamptz) returns int
+language plpgsql stable as $$
+declare t timestamp := a at time zone 'America/Sao_Paulo'; fim timestamp := b at time zone 'America/Sao_Paulo';
+  d date; ini timestamp; fe timestamp; tot interval := '0'; i int := 0;
+begin
+  while t < fim and i < 400 loop
+    d := t::date;
+    if extract(isodow from d) <= 5 then
+      ini := greatest(t, d + time '08:00'); fe := least(fim, d + time '19:00');
+      if fe > ini then tot := tot + (fe - ini); end if;
+    end if;
+    t := (d + 1)::timestamp; i := i + 1;
+  end loop;
+  return floor(extract(epoch from tot) / 60);
+end $$;
+
+-- lead da campanha usa a fila da campanha; lead sem campanha usa a roleta marcada como padrão
+create or replace function public.repassar_leads_parados() returns int
+language plpgsql security definer set search_path = public as $$
+declare
+  agora timestamp := now() at time zone 'America/Sao_Paulo';
+  l record; c public.campanhas; lista uuid[]; n int; prox uuid; tot int := 0;
+begin
+  if extract(isodow from agora) > 5 or agora::time < time '08:00' or agora::time >= time '19:00' then return 0; end if;
+  for l in select * from public.leads
+           where etapa = 'novo' and atendido_em is null and corretor_id is not null and repasses < 2
+             and public.minutos_uteis(atribuido_em, now()) >= 15
+           for update skip locked loop
+    c := null;
+    if l.campanha_id is not null then
+      select * into c from public.campanhas where id = l.campanha_id and ativa for update;
+    end if;
+    if c.id is null then
+      select * into c from public.campanhas where padrao and ativa order by criado limit 1 for update;
+    end if;
+    if c.id is null then continue; end if;
+    select array_agg(x order by ord) into lista
+      from unnest(c.participantes) with ordinality as t(x, ord)
+      join public.profiles p on p.id = t.x
+     where p.ativo and not (t.x = any(coalesce(c.pausados, '{}'))) and t.x <> l.corretor_id;
+    n := coalesce(array_length(lista, 1), 0);
+    if n = 0 then continue; end if;
+    prox := lista[(c.ponteiro % n) + 1];
+    update public.campanhas set ponteiro = ponteiro + 1 where id = c.id;
+    update public.leads set corretor_id = prox, repasses = repasses + 1, atualizado = now(),
+      notas = notas || jsonb_build_array(jsonb_build_object(
+        't', '↪️ Repassado automaticamente (' || c.nome || '): ' || coalesce((select nome from public.profiles where id = l.corretor_id), '?') || ' não atendeu em 15 min',
+        'em', floor(extract(epoch from now()) * 1000), 'por', 'Roleta'))
+     where id = l.id;
+    tot := tot + 1;
+  end loop;
+  return tot;
+end $$;
+revoke all on function public.repassar_leads_parados() from public, anon, authenticated;
+
+create extension if not exists pg_cron;
+select cron.unschedule('repassar-leads-parados') where exists (select 1 from cron.job where jobname = 'repassar-leads-parados');
+select cron.schedule('repassar-leads-parados', '*/5 * * * *', 'select public.repassar_leads_parados()');
