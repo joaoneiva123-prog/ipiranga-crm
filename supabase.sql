@@ -712,3 +712,125 @@ revoke all on function public.repassar_leads_parados() from public, anon, authen
 create extension if not exists pg_cron;
 select cron.unschedule('repassar-leads-parados') where exists (select 1 from cron.job where jobname = 'repassar-leads-parados');
 select cron.schedule('repassar-leads-parados', '*/5 * * * *', 'select public.repassar_leads_parados()');
+-- REPASSE AUTOMÁTICO v4 — só leads da roleta e do site; atendido = saiu da etapa "Novo lead"
+alter table public.leads add column if not exists atribuido_em timestamptz default now();
+alter table public.leads add column if not exists atendido_em timestamptz;
+alter table public.leads add column if not exists repasses int not null default 0;
+alter table public.leads add column if not exists ja_passou uuid[] not null default '{}';
+alter table public.campanhas add column if not exists padrao boolean not null default false;
+
+create or replace function public.leads_atribuicao() returns trigger language plpgsql as $$
+begin
+  if tg_op = 'INSERT' then
+    new.atribuido_em := now();
+    new.atendido_em := case when new.etapa <> 'novo' or new.origem_id is not null then now() else null end;
+  elsif new.corretor_id is distinct from old.corretor_id then
+    new.atribuido_em := now();
+    new.atendido_em := case when new.etapa <> 'novo' then now() else null end;
+  elsif old.atendido_em is null and new.etapa <> 'novo' then
+    new.atendido_em := now();
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_leads_atribuicao on public.leads;
+create trigger trg_leads_atribuicao before insert or update on public.leads
+  for each row execute function public.leads_atribuicao();
+
+-- leads que estão em "Novo" agora voltam a valer a regra (o relógio começa agora)
+update public.leads set atendido_em = null, atribuido_em = now()
+ where etapa = 'novo' and (campanha_id is not null or origem = 'Site') and atendido_em is not null;
+
+create or replace function public.minutos_uteis(a timestamptz, b timestamptz) returns int
+language plpgsql stable as $$
+declare t timestamp := a at time zone 'America/Sao_Paulo'; fim timestamp := b at time zone 'America/Sao_Paulo';
+  d date; ini timestamp; fe timestamp; tot interval := '0'; i int := 0;
+begin
+  while t < fim and i < 400 loop
+    d := t::date;
+    if extract(isodow from d) <= 5 then
+      ini := greatest(t, d + time '08:00'); fe := least(fim, d + time '19:00');
+      if fe > ini then tot := tot + (fe - ini); end if;
+    end if;
+    t := (d + 1)::timestamp; i := i + 1;
+  end loop;
+  return floor(extract(epoch from tot) / 60);
+end $$;
+
+create or replace function public.repassar_leads_parados() returns int
+language plpgsql security definer set search_path = public as $$
+declare
+  agora timestamp := now() at time zone 'America/Sao_Paulo';
+  l record; c public.campanhas; lista uuid[]; n int; prox uuid; tot int := 0;
+begin
+  if extract(isodow from agora) > 5 or agora::time < time '08:00' or agora::time >= time '19:00' then return 0; end if;
+  for l in select * from public.leads
+           where etapa = 'novo' and atendido_em is null and corretor_id is not null
+             and (campanha_id is not null or origem = 'Site')
+             and public.minutos_uteis(atribuido_em, now()) >= 15
+           for update skip locked loop
+    c := null;
+    if l.campanha_id is not null then
+      select * into c from public.campanhas where id = l.campanha_id and ativa for update;
+    end if;
+    if c.id is null and l.origem = 'Site' then
+      select * into c from public.campanhas where ativa and (origem = 'Site' or nome ilike 'site%' or padrao)
+       order by (origem = 'Site' or nome ilike 'site%') desc, criado limit 1 for update;
+    end if;
+    if c.id is null then continue; end if;
+    -- próximo da fila que ainda não recebeu este lead
+    select array_agg(x order by ord) into lista
+      from unnest(c.participantes) with ordinality as t(x, ord)
+      join public.profiles p on p.id = t.x
+     where p.ativo and not (t.x = any(coalesce(c.pausados, '{}')))
+       and t.x <> l.corretor_id and not (t.x = any(l.ja_passou));
+    n := coalesce(array_length(lista, 1), 0);
+    if n = 0 then continue; end if;   -- todos já tiveram a chance: fica com o atual
+    prox := lista[(c.ponteiro % n) + 1];
+    update public.campanhas set ponteiro = ponteiro + 1 where id = c.id;
+    update public.leads set corretor_id = prox, campanha_id = c.id, repasses = repasses + 1,
+      ja_passou = array_append(ja_passou, l.corretor_id), atualizado = now(),
+      notas = notas || jsonb_build_array(jsonb_build_object(
+        't', '↪️ Repassado automaticamente: ' || coalesce((select nome from public.profiles where id = l.corretor_id), '?') || ' não atendeu em 15 min',
+        'em', floor(extract(epoch from now()) * 1000), 'por', 'Roleta'))
+     where id = l.id;
+    tot := tot + 1;
+  end loop;
+  return tot;
+end $$;
+revoke all on function public.repassar_leads_parados() from public, anon, authenticated;
+
+-- lead do site entra na roleta de origem "Site" ou, se não houver, na roleta marcada ⭐
+create or replace function public.site_lead(p_nome text, p_tel text, p_email text default null, p_msg text default null, p_codigo text default null)
+returns json language plpgsql security definer set search_path = public as $$
+declare v_imo public.imoveis; v_camp public.campanhas; lista uuid[]; n int; v_cor uuid; v_id uuid; v_txt text;
+begin
+  if length(coalesce(trim(p_nome), '')) < 2 or length(regexp_replace(coalesce(p_tel, ''), '\D', '', 'g')) < 10 then raise exception 'dados inválidos'; end if;
+  if length(coalesce(p_msg, '')) > 2000 or length(p_nome) > 120 then raise exception 'texto muito longo'; end if;
+  -- evita duplicado/robô: mesmo telefone nos últimos 10 minutos
+  if exists (select 1 from public.leads where regexp_replace(coalesce(tel, ''), '\D', '', 'g') = regexp_replace(p_tel, '\D', '', 'g') and criado > now() - interval '10 minutes')
+    then return json_build_object('ok', true, 'repetido', true); end if;
+  if p_codigo is not null then select * into v_imo from public.imoveis where codigo = p_codigo or id::text = p_codigo limit 1; end if;
+  -- roleta da campanha de origem "Site" (se existir e estiver ativa); senão vai para o diretor geral
+  select * into v_camp from public.campanhas where ativa and (origem = 'Site' or nome ilike 'site%' or padrao)
+    order by (origem = 'Site' or nome ilike 'site%') desc, criado limit 1 for update;
+  if found then
+    select array_agg(x order by ord) into lista from unnest(v_camp.participantes) with ordinality as t(x, ord)
+      join public.profiles p on p.id = t.x where p.ativo and not (t.x = any(v_camp.pausados));
+    n := coalesce(array_length(lista, 1), 0);
+    if n > 0 then v_cor := lista[(v_camp.ponteiro % n) + 1]; update public.campanhas set ponteiro = ponteiro + 1 where id = v_camp.id; end if;
+  end if;
+  if v_cor is null then select id into v_cor from public.profiles where master and ativo order by criado limit 1; end if;
+  if v_cor is null then select id into v_cor from public.profiles where papel = 'diretor' and ativo order by criado limit 1; end if;
+  v_txt := '🌐 Contato pelo site' || coalesce(E'\nImóvel: ' || v_imo.codigo || ' – ' || v_imo.titulo, '') || coalesce(E'\nE-mail: ' || nullif(p_email, ''), '') || coalesce(E'\n' || nullif(p_msg, ''), '');
+  insert into public.leads (corretor_id, nome, tel, etapa, origem, busca, data, imovel_id, campanha_id, notas)
+  values (v_cor, trim(p_nome), trim(p_tel), 'novo', 'Site', v_imo.titulo, current_date, v_imo.id, v_camp.id,
+          jsonb_build_array(jsonb_build_object('t', v_txt, 'em', floor(extract(epoch from now()) * 1000), 'por', 'Site')))
+  returning id into v_id;
+  return json_build_object('ok', true);
+end $$;
+revoke all on function public.site_lead(text, text, text, text, text) from public;
+grant execute on function public.site_lead(text, text, text, text, text) to anon, authenticated;
+
+create extension if not exists pg_cron;
+select cron.unschedule('repassar-leads-parados') where exists (select 1 from cron.job where jobname = 'repassar-leads-parados');
+select cron.schedule('repassar-leads-parados', '*/5 * * * *', 'select public.repassar_leads_parados()');

@@ -644,9 +644,10 @@ function minUteis(a,b){const OFF=3*3600e3,H=3600e3;let t=a-OFF,fim=b-OFF,tot=0,i
     if(w>=1&&w<=5){const s=Math.max(t,d0+8*H),e=Math.min(fim,d0+19*H);if(e>s)tot+=e-s}t=d0+24*H}
   return Math.floor(tot/60000)}
 function emHorarioUtil(){const d=new Date(Date.now()-3*3600e3),w=d.getUTCDay(),h=d.getUTCHours();return w>=1&&w<=5&&h>=8&&h<19}
-function minSemAtend(c){if(!c||c.etapa!=='novo'||c.atendido_em||!c.atribuido_em)return null;return minUteis(new Date(c.atribuido_em).getTime(),Date.now())}
+const entraNaRegra=c=>!!(c&&(c.campanha_id||c.origem==='Site'));
+function minSemAtend(c){if(!c||!entraNaRegra(c)||c.etapa!=='novo'||c.atendido_em||!c.atribuido_em)return null;return minUteis(new Date(c.atribuido_em).getTime(),Date.now())}
 const fmtMin=m=>m<60?m+' min':m<1440?Math.floor(m/60)+'h'+(m%60?String(m%60).padStart(2,'0'):''):Math.floor(m/1440)+' dia'+(m>=2880?'s':'');
-function slaPill(c){const m=minSemAtend(c),rp=c.repasses>0?`<span class="pill" title="Repassado por falta de atendimento">↪️ repassado${c.repasses>1?' '+c.repasses+'x':''}</span>`:'';if(m==null)return rp;if(m===0&&!emHorarioUtil())return rp+'<span class="pill amber">🌙 conta a partir das 8h (dia útil)</span>';return rp+(m>=SLA_ALERTA?`<span class="pill red">⏰ ${fmtMin(m)} sem atendimento</span>`:`<span class="pill amber">🆕 há ${fmtMin(m)}</span>`)}
+function slaPill(c){const m=minSemAtend(c),rp=c.repasses>0?`<span class="pill" title="Repassado por falta de atendimento">↪️ repassado${c.repasses>1?' '+c.repasses+'x':''}</span>`:'';if(m==null)return rp;if(m===0&&!emHorarioUtil())return rp+'<span class="pill amber">🌙 conta a partir das 8h (dia útil)</span>';return rp+(m>=SLA_ALERTA?`<span class="pill red">⏰ ${fmtMin(m)} parado · repassa em ${fmtMin(Math.max(0,SLA_REPASSE-m))}</span>`:`<span class="pill amber">🆕 há ${fmtMin(m)} · ${fmtMin(SLA_REPASSE-m)} p/ atender</span>`)}
 async function marcarAtendido(c){if(!c||c.corretor_id!==S.me.id||c.atendido_em)return;c.atendido_em=new Date().toISOString();
   const{error}=await sb.from('leads').update({atendido_em:c.atendido_em}).eq('id',c.id);if(error)console.warn(error)}
 function rSla(){const box=S.view==='leads'?$('slaLeads'):S.view==='dash'?$('slaDash'):null;['slaLeads','slaDash'].forEach(id=>{const e=$(id);if(e&&e!==box)e.innerHTML=''});if(!box)return;
@@ -655,11 +656,10 @@ function rSla(){const box=S.view==='leads'?$('slaLeads'):S.view==='dash'?$('slaD
   if(!P.length){box.innerHTML=alerta?`<div style="margin:10px 22px 0">${alerta}</div>`:'';return}
   const meus=P.filter(x=>x.c.corretor_id===S.me.id),outros=P.filter(x=>x.c.corretor_id!==S.me.id);
   box.innerHTML=`<div class="slabox">${meus.length?`<div class="slatit">⏰ ${meus.length===1?'1 lead esperando você':meus.length+' leads esperando você'} · atenda agora</div>
-    <div class="slasub">Quem chama nos primeiros minutos converte muito mais. Sem atendimento em ${SLA_REPASSE} min (seg a sex, 8h às 19h), o lead passa sozinho para o próximo da roleta.</div>
-    <div class="slalist">${meus.map(({c,m})=>`<div class="tchip ${m>=SLA_ALERTA?'late':'today'}" data-lead="${c.id}"><b>${esc(c.nome)}</b><small>${esc(c.tel||'')} · há ${fmtMin(m)}</small></div>`).join('')}</div>`:''}
-   ${outros.length?`<div class="slatit" ${meus.length?'style="margin-top:12px"':''}>🚨 ${outros.length} lead${outros.length>1?'s':''} da equipe sem atendimento há mais de ${SLA_ALERTA} min</div>
-    <div class="slalist">${outros.map(({c,m})=>{const p=S.perfis.find(x=>x.id===c.corretor_id);const msg=`⏰ ${p?p.nome.split(' ')[0]:''}, o lead *${c.nome}*${c.tel?' ('+c.tel+')':''} está há ${fmtMin(m)} sem atendimento. Chame agora!\nCRM: ${APP_URL}`;
-      return`<div class="tchip late" data-lead="${c.id}"><b>${esc(c.nome)}</b><small>${esc(nomeDe(c.corretor_id))} · há ${fmtMin(m)}</small>${p?.whatsapp?`<a class="slawa" href="${esc(waLink(p.whatsapp,msg))}" target="_blank" rel="noopener" data-qa="wa">💬 Cobrar</a>`:''}</div>`}).join('')}</div>`:''}
+    <div class="slasub">Para contar como atendido, tire o lead de <b>Novo lead</b> (mova para Ligar, Visita, Aguardando retorno…). Senão, em ${SLA_REPASSE} min úteis ele passa sozinho para o próximo corretor.</div>
+    <div class="slalist">${meus.map(({c,m})=>`<div class="tchip ${m>=SLA_ALERTA?'late':'today'}" data-lead="${c.id}"><b>${esc(c.nome)}</b><small>${esc(c.tel||'')} · repassa em ${fmtMin(Math.max(0,SLA_REPASSE-m))}</small></div>`).join('')}</div>`:''}
+   ${outros.length?`<div class="slatit" ${meus.length?'style="margin-top:12px"':''}>🔄 ${outros.length} lead${outros.length>1?'s':''} da equipe parado${outros.length>1?'s':''} · repasse automático em andamento</div>
+    <div class="slalist">${outros.map(({c,m})=>`<div class="tchip late" data-lead="${c.id}"><b>${esc(c.nome)}</b><small>${esc(nomeDe(c.corretor_id))} · parado há ${fmtMin(m)} · ${m>=SLA_REPASSE?'repassando…':'repassa em '+fmtMin(SLA_REPASSE-m)}</small></div>`).join('')}</div>`:''}
    ${alerta?`<div style="margin-top:10px">${alerta}</div>`:''}</div>`}
 document.addEventListener('click',async e=>{if(e.target.id!=='slaNotif')return;try{await Notification.requestPermission()}catch(_){}rSla();if(Notification.permission==='granted')toast('Alertas ativados neste aparelho ✓')});
 let jaAvisados=null;
@@ -716,7 +716,7 @@ $('mlEtapa').innerHTML=ETAPAS.map(e=>`<option value="${e.id}">${e.ico} ${esc(e.n
 $('mlEtapa').onchange=()=>{$('mlDataL').textContent=ETAPAS.find(x=>x.id===$('mlEtapa').value).data||'Próximo contato'};
 $('mlQuick').onclick=e=>{const b=e.target.closest('button');if(b)$('mlData').value=b.dataset.d==='x'?'':addDias(+b.dataset.d)};
 $('lNovo').onclick=()=>abrirLead(null);
-function abrirLead(id){const c=id?S.leads.find(x=>x.id===id):null;if(id&&!c)return;marcarAtendido(c);mlId=c?.id||null;mlNotas=[...(c?.notas||[])];
+function abrirLead(id){const c=id?S.leads.find(x=>x.id===id):null;if(id&&!c)return;mlId=c?.id||null;mlNotas=[...(c?.notas||[])];
   $('mlTitle').textContent=c?c.nome:'Novo lead';$('mlNome').value=c?.nome||'';$('mlTel').value=c?.tel||'';
   $('mlEtapa').value=c?.etapa||'novo';$('mlEtapa').onchange();
   ['mlEtapaBox','mlDataBox','mlHoraBox'].forEach(id=>$(id).classList.toggle('hide',!c)); // cadastro novo: só os dados; entra em Novo lead
@@ -1366,7 +1366,7 @@ function rRoleta(){
    ${C.length?`<div class="grid">${C.map(c=>{const parts=(c.participantes||[]).map(id=>S.perfis.find(p=>p.id===id)).filter(Boolean),ativos_=parts.filter(p=>p.ativo&&!(c.pausados||[]).includes(p.id));
       const prox=ativos_.length?ativos_[(c.ponteiro||0)%ativos_.length]:null,L=S.leads.filter(l=>l.campanha_id===c.id),Lh=L.filter(l=>(l.criado||'').startsWith(hoje));
       return`<div class="icard" style="cursor:default;border-top-color:${c.ativa?'#22c55e':'#6b7280'}">
-       <div class="cod">${esc(c.origem||'Campanha')} · ${c.ativa?'<b style="color:#86efac">ATIVA</b>':'<b>PAUSADA</b>'}${c.padrao?' · <b style="color:#fcd34d">⭐ PADRÃO</b>':''}</div><h4>${esc(c.nome)}</h4>
+       <div class="cod">${esc(c.origem||'Campanha')} · ${c.ativa?'<b style="color:#86efac">ATIVA</b>':'<b>PAUSADA</b>'}${c.padrao?' · <b style="color:#fcd34d">⭐ SITE</b>':''}</div><h4>${esc(c.nome)}</h4>
        <div class="spec">${L.length} leads no total · ${Lh.length} hoje</div>
        <div style="margin:10px 0 6px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Fila de atendimento</div>
        <div style="display:flex;flex-direction:column;gap:5px">${parts.map(p=>{const pa=(c.pausados||[]).includes(p.id)||!p.ativo,n=L.filter(l=>l.corretor_id===p.id).length;
@@ -1388,7 +1388,7 @@ function editarCampanha(id){const c=id?S.camp.find(x=>x.id===id):{ativa:true,par
    <div class="f"><label>Origem dos leads</label><select id="rcOrig">${opts(['Meta Ads','Instagram','Google Ads','Site','Portal','WhatsApp','Indicação','Outro'],c.origem||'Meta Ads')}</select></div>
    <div class="f"><label>Quem atende (ordem da fila)</label><div style="display:flex;flex-direction:column;gap:4px">${elegiveis.map(p=>`<label class="chk" style="margin:0"><input type="checkbox" data-rp="${p.id}" ${(c.participantes||[]).includes(p.id)?'checked':''}> ${esc(p.nome)} <small style="color:var(--muted)">· ${({diretor:'Diretor',gerente:'Gerente',corretor:'Corretor'})[p.papel]||''}</small></label>`).join('')}</div></div>
    <label class="chk"><input type="checkbox" id="rcAtiva" ${c.ativa?'checked':''}> Campanha ativa (recebendo leads)</label>
-   <label class="chk"><input type="checkbox" id="rcPadrao" ${c.padrao?'checked':''}> ⭐ Roleta padrão: recebe os leads <b>sem campanha</b> (cadastrados à mão) que não forem atendidos em ${SLA_REPASSE} min</label>
+   <label class="chk"><input type="checkbox" id="rcPadrao" ${c.padrao?'checked':''}> ⭐ Roleta do site: os leads que chegam pelo site entram nesta fila (use se não tiver uma campanha com origem "Site")</label>
    ${id&&isDir()?`<button class="btn danger sm" id="rcDel" type="button">Excluir campanha</button>`:''}`,async()=>{
     const nome=$('rcNome').value.trim();if(!nome){toast('Dê um nome à campanha');return false}
     const participantes=[...document.querySelectorAll('[data-rp]')].filter(x=>x.checked).map(x=>x.dataset.rp);if(!participantes.length){toast('Escolha ao menos um corretor');return false}
