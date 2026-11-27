@@ -106,8 +106,10 @@ function lista(){
   $('verMais').style.display=I.length>mostrar?'inline-flex':'none'}
 (async()=>{TODOS=await imoveis();const tipos=[...new Set(TODOS.map(i=>i.tipo).filter(Boolean))].sort();
   const op=tipos.map(t=>`<option>${esc(t)}</option>`).join('');$('fTipo').innerHTML+=op;$('bTipo').innerHTML+=op;$('fTipo').value=F.tipo;$('bTipo').value=F.tipo;$('fBusca').value=F.q;
-  $('nImoveis').textContent=TODOS.length;const capa=TODOS.find(i=>(i.fotos||[]).length&&i.valor>800000)||TODOS.find(i=>(i.fotos||[]).length);
-  if(capa)$('hero').style.setProperty('--hero',`url("${capa.fotos[0]}")`);lista();if(location.hash==='#imoveis')setTimeout(()=>$('imoveis').scrollIntoView(),50)})();
+  $('nImoveis').textContent=TODOS.length;// fundo da capa: sempre o imóvel de maior valor que tenha foto
+  const capa=TODOS.filter(i=>(i.fotos||[]).length&&+i.valor>0).sort((a,b)=>(+b.valor)-(+a.valor))[0];
+  if(capa){$('hero').style.setProperty('--hero',`url("${capa.fotos[0]}")`);
+    $('hero').insertAdjacentHTML('beforeend',`<a class="herodest" href="${linkImovel(capa)}">⭐ Destaque: ${esc(capa.titulo||capa.tipo||'Imóvel')} · ${brl(capa.valor)} →</a>`)}lista();if(location.hash==='#imoveis')setTimeout(()=>$('imoveis').scrollIntoView(),50)})();
 $('fContato').onsubmit=e=>{e.preventDefault();enviarLead(e.target)};
 </script>
 </body>
