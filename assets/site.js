@@ -1,7 +1,7 @@
 /* Site público da Ipiranga — lê os imóveis direto do CRM (Supabase) */
 const CFG={SUPABASE_URL:"https://rqdcsydbeaotpmrujryh.supabase.co",SUPABASE_ANON_KEY:"sb_publishable_EZqLB2BtDefw4Swx1Mt5XA_DMV363DC",
   WHATS:"5562999938383",INSTAGRAM:"https://www.instagram.com/ipirangagestaoimob",CRECI:"CRECI 38481-J",
-  ENDERECO:"Av. Senador José Lourenço Dias, 1470 – Anápolis-GO",RAZAO:"Ipiranga Soluções Imobiliárias Ltda",GTM:"GTM-PZ8T9ZVH"};
+  ENDERECO:"Av. Senador José Lourenço Dias, 1470 – Anápolis-GO",RAZAO:"Ipiranga Soluções Imobiliárias Ltda",GTM:["GTM-TQGMS65N","GTM-PZ8T9ZVH"]};
 const sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY);
 const BASE=location.pathname.startsWith('/ipiranga-crm/')?'/ipiranga-crm/':'/';
 const $=id=>document.getElementById(id);
@@ -31,7 +31,8 @@ function rodape(){return`<footer><div class="wrap"><div class="cols"><div><img s
   <div class="base"><span>© ${new Date().getFullYear()} ${CFG.RAZAO}. Todos os direitos reservados. ${CFG.CRECI}.</span><span>Anápolis-GO</span></div></div></footer>
   <a class="zap" href="${wa('Olá! Vim pelo site da Ipiranga.')}" target="_blank" rel="noopener" aria-label="WhatsApp">💬</a>`}
 /* Google Tag Manager só depois do aceite de cookies */
-function gtm(){if(window._gtm)return;window._gtm=1;(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s);j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i;f.parentNode.insertBefore(j,f)})(window,document,'script','dataLayer',CFG.GTM)}
+function gtm(){if(window._gtm)return;window._gtm=1;window.dataLayer=window.dataLayer||[];dataLayer.push({'gtm.start':new Date().getTime(),event:'gtm.js'});
+  [].concat(CFG.GTM).forEach(i=>{const j=document.createElement('script');j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i;document.head.appendChild(j)})}
 function cookies(){let ok=null;try{ok=localStorage.getItem('ipi_cookies')}catch(e){}if(ok==='1')return gtm();if(ok==='0')return;
   const d=document.createElement('div');d.className='cookie';d.innerHTML='<span style="flex:1">Usamos cookies para medir visitas e melhorar sua experiência.</span><button class="btn claro" id="ckN">Recusar</button><button class="btn" id="ckS">Aceitar</button>';
   document.body.appendChild(d);const fim=v=>{try{localStorage.setItem('ipi_cookies',v)}catch(e){}d.remove();if(v==='1')gtm()};$('ckS').onclick=()=>fim('1');$('ckN').onclick=()=>fim('0')}
