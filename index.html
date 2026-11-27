@@ -40,7 +40,7 @@
       <select id="fQuartos"><option value="">Quartos</option><option value="1">1+ quarto</option><option value="2">2+ quartos</option><option value="3">3+ quartos</option><option value="4">4+ quartos</option></select>
       <select id="fFaixa"><option value="">Qualquer valor</option><option value="0-300000">Até R$ 300 mil</option><option value="300000-600000">R$ 300 a 600 mil</option><option value="600000-1000000">R$ 600 mil a 1 mi</option><option value="1000000-">Acima de R$ 1 mi</option></select>
       <input id="fBusca" placeholder="Bairro, condomínio, código…">
-      <select id="fOrdem"><option value="rec">Mais recentes</option><option value="menor">Menor preço</option><option value="maior">Maior preço</option></select>
+      <select id="fOrdem"><option value="maior" selected>Maior preço</option><option value="menor">Menor preço</option><option value="rec">Mais recentes</option></select>
       <button class="limpar" id="fLimpar" type="button">Limpar filtros</button>
     </div>
     <div class="grade" id="grade"></div>
@@ -93,7 +93,7 @@ $('busca').onsubmit=e=>{e.preventDefault();const f=new FormData(e.target);F.fin=
   history.replaceState(null,'',`?fin=${F.fin}${F.tipo?'&tipo='+encodeURIComponent(F.tipo):''}${f.get('q')?'&q='+encodeURIComponent(f.get('q')):''}#imoveis`);$('imoveis').scrollIntoView({behavior:'smooth'})};
 $('porCodigo').onclick=()=>{const c=prompt('Digite o código do imóvel');if(c)location.href=`${BASE}imovel.html?c=${encodeURIComponent(c.trim())}`};
 ['fTipo','fQuartos','fFaixa','fOrdem'].forEach(id=>$(id).onchange=()=>{mostrar=24;lista()});$('fBusca').oninput=()=>{mostrar=24;lista()};
-$('fLimpar').onclick=()=>{['fTipo','fQuartos','fFaixa','fBusca'].forEach(id=>$(id).value='');$('fOrdem').value='rec';mostrar=24;lista()};
+$('fLimpar').onclick=()=>{['fTipo','fQuartos','fFaixa','fBusca'].forEach(id=>$(id).value='');$('fOrdem').value='maior';mostrar=24;lista()};
 $('verMais').onclick=()=>{mostrar+=24;lista()};
 function lista(){
   const tp=$('fTipo').value,qt=+$('fQuartos').value||0,[mi,ma]=($('fFaixa').value||'-').split('-').map(Number),q=$('fBusca').value.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
