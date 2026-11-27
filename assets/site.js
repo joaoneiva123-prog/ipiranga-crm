@@ -1,7 +1,7 @@
 /* Site público da Ipiranga — lê os imóveis direto do CRM (Supabase) */
 const CFG={SUPABASE_URL:"https://rqdcsydbeaotpmrujryh.supabase.co",SUPABASE_ANON_KEY:"sb_publishable_EZqLB2BtDefw4Swx1Mt5XA_DMV363DC",
   WHATS:"5562999938383",INSTAGRAM:"https://www.instagram.com/ipirangagestaoimob",CRECI:"CRECI 38481-J",
-  ENDERECO:"Av. Senador José Lourenço Dias, 1470 – Anápolis-GO",RAZAO:"Ipiranga Soluções Imobiliárias Ltda",GTM:"GTM-TQGMS65N"};
+  ENDERECO:"Av. Senador José Lourenço Dias, 1470 – Anápolis-GO",RAZAO:"Ipiranga Soluções Imobiliárias Ltda",GTM:"GTM-PZ8T9ZVH"};
 const sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY);
 const BASE=location.pathname.startsWith('/ipiranga-crm/')?'/ipiranga-crm/':'/';
 const $=id=>document.getElementById(id);
