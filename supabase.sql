@@ -839,3 +839,23 @@ select cron.schedule('repassar-leads-parados', '*/5 * * * *', 'select public.rep
 drop policy if exists cp_del on public.campanhas;
 create policy cp_del on public.campanhas for delete to authenticated
   using (public.is_diretor() or public.is_gerente() or public.is_secretaria());
+-- CORRETOR SÓ MEXE NOS PRÓPRIOS LEADS: imóveis, fotos e vendas só diretor, gerente e secretária alteram
+drop policy if exists i_ins on public.imoveis;
+create policy i_ins on public.imoveis for insert to authenticated
+  with check (public.is_diretor() or public.is_gerente() or public.is_secretaria());
+drop policy if exists i_upd on public.imoveis;
+create policy i_upd on public.imoveis for update to authenticated
+  using (public.is_diretor() or public.is_gerente() or public.is_secretaria())
+  with check (public.is_diretor() or public.is_gerente() or public.is_secretaria());
+
+drop policy if exists "fotos_envio" on storage.objects;
+create policy "fotos_envio" on storage.objects for insert to authenticated
+  with check (bucket_id = 'fotos' and (public.is_diretor() or public.is_gerente() or public.is_secretaria()));
+
+drop policy if exists v_ins on public.vendas;
+create policy v_ins on public.vendas for insert to authenticated
+  with check ((public.is_diretor() or public.is_gerente() or public.is_secretaria()) and public.pode_ver_lead(corretor_id));
+drop policy if exists v_upd on public.vendas;
+create policy v_upd on public.vendas for update to authenticated
+  using ((public.is_diretor() or public.is_gerente() or public.is_secretaria()) and public.pode_ver_lead(corretor_id))
+  with check ((public.is_diretor() or public.is_gerente() or public.is_secretaria()) and public.pode_ver_lead(corretor_id));

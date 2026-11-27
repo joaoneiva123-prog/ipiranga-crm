@@ -156,6 +156,7 @@ header .brand{cursor:pointer}
 .vfbar{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 12px;align-items:center}.vfbar input{background:#1f1f1f;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px 10px;font:inherit;font-size:13px;min-width:0}
 .vfbar>input{flex:1 1 180px}.vfbar .par{display:flex;align-items:center;gap:5px}.vfbar .par span{font-size:12px;color:var(--muted);white-space:nowrap}.vfbar .par input{width:92px}
 .vftot{margin-top:10px;font-size:13px;color:var(--muted)}
+.ro .gx,.ro .gc:not(span),.ro .upl,.ro label.chk,.ro .cepbtn{display:none!important}.ro input:disabled,.ro select:disabled,.ro textarea:disabled{opacity:1;color:var(--text);cursor:default}
 .selbusca{margin-bottom:6px;width:100%}.selbusca.nada{border-color:var(--red)!important}
 .slabox{margin:12px 22px 0;background:#3b1717;border:1px solid #7f1d1d;border-radius:14px;padding:12px 14px}.slatit{font-weight:800}.slasub{font-size:13px;color:#fca5a5;margin:2px 0 8px}
 .slalist{display:flex;gap:8px;overflow-x:auto}.slalist .tchip{min-width:180px;flex:0 0 auto;cursor:pointer;display:block;margin:0}.slawa{display:inline-block;margin-top:6px;background:#14532d;color:#bbf7d0;border-radius:7px;padding:4px 9px;font-size:12px;font-weight:700;text-decoration:none}
@@ -538,6 +539,8 @@ const isDir=()=>S.me?.papel==='diretor';
 const isGer=()=>S.me?.papel==='gerente';
 const isSec=()=>S.me?.papel==='secretaria';
 const gestor=()=>isDir()||isGer()||isSec();
+const podeEditar=()=>gestor(); // corretor só mexe nos próprios leads
+function travar(el,ro){if(!el)return;el.classList.toggle('ro',ro);el.querySelectorAll('input,select,textarea').forEach(x=>{if(x.type==='search'&&x.classList.contains('selbusca'))return;x.disabled=ro})}
 const podeCaptar=()=>isDir()||isGer()||isSec();
 /* quem o usuário enxerga/gerencia: diretor = todos; gerente = ele + corretores; corretor = só ele */
 const isMaster=()=>!!S.me?.master;
@@ -586,6 +589,7 @@ async function iniciar(){
   $('fNovo').classList.toggle('hide',!isDir());
   $('mlCorBox').classList.toggle('hide',!gestor());
   $('miDel').classList.toggle('hide',!isDir());$('iMelhorar').classList.toggle('hide',!isDir());
+  $('iNovo').classList.toggle('hide',!podeEditar());$('miSave').classList.toggle('hide',!podeEditar());
   await carregarTudo(); tempoReal(); setInterval(carregarTudo,120000);
   const qLead=new URLSearchParams(location.search).get('lead');if(qLead){history.replaceState(null,'',location.pathname);const L=S.leads.find(x=>x.id===qLead);if(L){irPara('leads');abrirLead(qLead)}else toast('Esse lead não está mais com você')}
 }
@@ -769,7 +773,7 @@ async function atualizaLead(id,patch){const c=S.leads.find(x=>x.id===id);if(!c)r
   patch.atualizado=new Date().toISOString();Object.assign(c,patch);render();
   const{error}=await sb.from('leads').update(patch).eq('id',id);if(error){falha(error);await carregar('leads');render();return false}return true}
 let qOk=null;
-function sheet(titulo,html,ok,txtOk='Confirmar'){$('qTitle').textContent=titulo;$('qBody').innerHTML=html;$('qOk').textContent=txtOk;$('qOk').classList.toggle('hide',!ok);
+function sheet(titulo,html,ok,txtOk='Confirmar'){$('qBody').classList.remove('ro');$('qTitle').textContent=titulo;$('qBody').innerHTML=html;$('qOk').textContent=txtOk;$('qOk').classList.toggle('hide',!ok);
   $('qCancel').textContent=ok?'Cancelar':'Fechar';qOk=ok;abrirOv('ovQ',false)}
 $('qOk').onclick=async()=>{if(qOk&&(await qOk())!==false)fecharOv()};
 $('qBody').addEventListener('click',e=>{const b=e.target.closest('.chips button');if(!b)return;
@@ -844,7 +848,7 @@ const pinIcon=(off,valor)=>valor?L.divIcon({className:'',html:`<div class="ptag 
 let mMapa=null,mPin=null,miLat=null,miLng=null;
 function mapaModal(lat,lng){if(!L_OK())return;const c=lat!=null?[lat,lng]:CENTRO;
   if(!mMapa){mMapa=L.map('miMapa',{zoomControl:true}).setView(c,lat!=null?16:13);tiles(mMapa);
-    mMapa.on('click',e=>setPin(e.latlng.lat,e.latlng.lng,true))}
+    mMapa.on('click',e=>{if(podeEditar())setPin(e.latlng.lat,e.latlng.lng,true)})}
   else mMapa.setView(c,lat!=null?16:13);
   if(mPin){mMapa.removeLayer(mPin);mPin=null}if(lat!=null)setPin(lat,lng,false);
   setTimeout(()=>mMapa.invalidateSize(),150)}
@@ -1142,6 +1146,7 @@ function abrirImo(id){const i=id?S.imoveis.find(x=>x.id===id):null;miId=i?.id||n
   $('miTipo').value=i?.tipo||'Apartamento';$('miFin').value=i?.finalidade||'Venda';$('miStatus').value=i?.status||'Disponível';
   const L=i?S.leads.filter(l=>l.imovel_id===i.id):[];
   $('miLeads').innerHTML=L.length?`<label>Leads interessados</label><div class="meta">${L.map(l=>`<span class="pill br" style="cursor:pointer" data-lead="${l.id}" data-closefirst>${esc(l.nome)}</span>`).join('')}</div>`:'';
+  travar($('ovImo'),!podeEditar());if(!podeEditar())$('miTitle').textContent=(i?.titulo||'Imóvel')+' · somente leitura';
   abrirOv('ovImo',!!i&&isDir());setTimeout(()=>mapaModal(miLat,miLng),60)}
 $('miLeads').onclick=e=>{const p=e.target.closest('[data-lead]');if(p){fecharOv();abrirLead(p.dataset.lead)}};
 $('miSave').onclick=async()=>{const titulo=$('miTitulo').value.trim();if(!titulo){$('miTitulo').focus();return toast('Coloque o título do imóvel')}
@@ -1588,6 +1593,8 @@ const vendaDoLead=id=>S.vendas.find(v=>v.lead_id===id);
 const nomeImovel=i=>i?((i.codigo?i.codigo+' · ':'')+i.titulo):'';
 let vdCtx=null;
 function abrirVenda({lead=null,venda=null}={}){
+  if(!podeEditar()&&!venda){(async()=>{if(lead&&lead.etapa!=='fechado'){const{error}=await sb.from('leads').update({etapa:'fechado',atualizado:new Date().toISOString()}).eq('id',lead.id);if(error)return falha(error);await carregar('leads');render()}
+    toast('🎉 Negócio fechado! A gestão vai registrar a venda e a comissão.')})();return}
   const v=venda||{},L0=lead||(v.lead_id?S.leads.find(x=>x.id===v.lead_id):null);vdCtx={venda:venda,lead:L0};
   const imoSel=v.imovel_id||L0?.imovel_id||'';
   const imos=S.imoveis.filter(i=>i.status==='Disponível'||i.id===imoSel);
@@ -1617,6 +1624,7 @@ function abrirVenda({lead=null,venda=null}={}){
   $('vdImo').onchange=()=>{const x=$('vdImo').value;$('vdImoDesc').classList.toggle('hide',x!=='__outro');const i=S.imoveis.find(i=>i.id===x);
     if(i){if(i.valor)$('vdValor').value=i.valor;$('vdTipo').value=i.finalidade==='Aluguel'?'Locação':'Venda';calc()}};
   buscavel($('vdImo'));
+  if(!podeEditar()){travar($('qBody'),true);$('qOk').classList.add('hide');$('qCancel').textContent='Fechar';$('qTitle').textContent+=' · somente leitura';$('qBody').querySelectorAll('button').forEach(b=>b.classList.add('hide'))}
   if($('vdDel'))$('vdDel').onclick=cancelarVenda;
 }
 async function salvarVenda(){
@@ -1677,7 +1685,7 @@ function rVendas(){
     <select class="sel" id="vAno">${opts(anos.map(a=>({v:String(a),t:String(a)})),String(S.vAno))}</select>
     <select class="sel" id="vMes"><option value="">Ano todo</option>${MES.map(m=>`<option value="${m}" ${S.vMes===m?'selected':''}>${nm(m)}</option>`).join('')}</select>
     ${gestor()?`<select class="sel" id="vCor"><option value="">Todos os corretores</option>${opts(equipe().map(p=>({v:p.id,t:p.nome})),S.vCor)}</select>`:''}
-    <button class="btn ghost" id="vCsv">⬇️ Relatório</button><button class="btn" id="vNova">+ Registrar venda</button></div></div>
+    <button class="btn ghost" id="vCsv">⬇️ Relatório</button>${podeEditar()?'<button class="btn" id="vNova">+ Registrar venda</button>':''}</div></div>
   <div class="kpis">
    <div class="kpi" style="--k:#16a34a"><span class="ic">💰</span><small>VGV ${periodo}</small><b>${brlK(tot)}</b><span>valor total negociado</span></div>
    <div class="kpi" style="--k:#3b82f6"><span class="ic">🤝</span><small>Negócios</small><b>${V.length}</b><span>${(n=>n+(n===1?' venda':' vendas'))(V.filter(v=>v.tipo==='Venda').length)} · ${(n=>n+(n===1?' locação':' locações'))(V.filter(v=>v.tipo==='Locação').length)}</span></div>
